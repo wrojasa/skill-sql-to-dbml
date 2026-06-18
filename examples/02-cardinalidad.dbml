@@ -1,0 +1,10 @@
+Table person {
+  id integer [pk]
+  name varchar(100) [not null]
+  manager_id integer [ref: > person.id]
+}
+
+Table person_profile {
+  person_id integer [pk, ref: - person.id]
+  bio text
+}

@@ -1,0 +1,11 @@
+Table department {
+  id integer [pk]
+  name varchar(100) [not null]
+}
+
+Table employee {
+  id integer [pk]
+  full_name varchar(150) [not null]
+  email varchar(150)
+  department_id integer [not null, ref: > department.id]
+}

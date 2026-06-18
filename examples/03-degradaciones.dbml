@@ -1,0 +1,15 @@
+Table order {
+  id integer [pk]
+  buyer varchar(120) [not null]
+}
+
+Table order_line {
+  order_id integer [pk, not null]
+  line_no integer [pk, not null]
+  product_id integer [not null]
+  qty integer [not null]
+  status order_status [not null]
+  Note: 'PK compuesta: (order_id, line_no). UNIQUE: (order_id, line_no, product_id). enum order_status: draft, paid, shipped. DEFAULTs omitidos (qty=1, status=draft).'
+}
+
+Ref: order_line.order_id > order.id
