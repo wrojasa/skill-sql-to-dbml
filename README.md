@@ -1,64 +1,79 @@
 # skill-sql-to-dbml
 
-Skill de Claude que convierte scripts **SQL `CREATE TABLE` (ANSI genérico)** —o
-tablas que vas definiendo— en código **DBML** compatible con el plugin de Obsidian
-[**DBML ER Diagrams**](https://github.com/wrojasa/obsidian-dbml-erd).
+Skill de Claude que convierte scripts **SQL `CREATE TABLE`** —ANSI, SQL Server,
+PostgreSQL o MySQL— o tablas que vas definiendo en código **DBML** compatible con
+el plugin de Obsidian [**DBML ER Diagrams**](https://github.com/wrojasa/obsidian-dbml-erd).
 
-El DBML generado se ciñe al subconjunto que ese plugin renderiza, así que el
-diagrama se ve correctamente en Obsidian (y también en
-[dbdiagram.io](https://dbdiagram.io)). Lo que el plugin no dibuja (PK compuesta,
-FK multi-columna, enums, defaults, unique) se degrada a una forma equivalente del
-subconjunto y se documenta en una nota, de modo que el bloque **siempre renderiza**.
+El DBML generado se ciñe al subconjunto que ese plugin renderiza y que
+[dbdiagram.io](https://dbdiagram.io) también acepta. Lo que el plugin no dibuja
+(PK compuesta, FK multi-columna, enums, defaults, unique) se degrada a una forma
+equivalente del subconjunto y se documenta en una nota, de modo que el bloque
+**siempre renderiza**.
+
+**Compatibilidad:** verificada contra DBML ER Diagrams **v0.1.21**.
 
 ## Qué hace
 
-- Lee uno o varios `CREATE TABLE` (y `ALTER TABLE ... ADD FOREIGN KEY`) y emite un bloque ```` ```dbml ````.
-- Detecta PK, NOT NULL y FKs; orienta las relaciones como el plugin las espera (`hijo.fk > padre.pk`) y preserva el `not null`/nullable de la FK (controla la marca obligatorio/opcional).
-- Modo incremental: agrega tablas nuevas a un bloque existente **sin tocar** las posiciones (`// @pos`), la vista (`// @view`) ni los colores que ya pusiste.
-- Convenciones (PK surrogate, columnas de auditoría, FK `_id`, color por módulo): **opcionales**, solo si las pides.
+- Lee uno o varios `CREATE TABLE`, con sus `ALTER TABLE`, y emite un bloque ```` ```dbml ````.
+- Normaliza scripts reales: corchetes y `IDENTITY` de SSMS, backticks y `int(11) unsigned` de MySQL, esquemas, arrays y alias de tipos de PostgreSQL, diferencias de mayúsculas entre tablas y referencias.
+- Detecta PK, NOT NULL y FKs. Toda PK sale con `not null`, y cada FK conserva su nulabilidad, que es lo que decide la marca obligatorio u opcional en el diagrama.
+- Orienta las relaciones como el plugin las espera (`hija.fk > padre.pk`) y usa `-` solo para un 1:1 real.
+- Modo incremental: agrega tablas a un bloque existente **sin tocar** el estado que guarda el plugin (`// @pos`, `// @edge`, `// @view`, `// @size`) ni los colores que ya pusiste.
+- Convenciones (PK surrogate, columnas de auditoría, nombres de FK, color por módulo): **opcionales**, solo si las pides.
+
+El plugin v0.1.21 no muestra las notas en el diagrama. Las degradaciones quedan
+en el texto del bloque y se ven en dbdiagram.io.
 
 ## Instalación
 
-La forma de instalar depende de dónde uses Claude.
-
-### Descargar desde GitHub
-
-- **ZIP (simple):** botón verde **Code → Download ZIP**. No lo descomprimas si vas a subirlo a Claude.ai.
-- **git:** `git clone https://github.com/wrojasa/skill-sql-to-dbml.git`
-
-### En Claude.ai / app de escritorio / Cowork
-
-1. Usa el ZIP de GitHub tal cual (contiene la carpeta con `SKILL.md` dentro). Claude.ai pide el **ZIP**, no la carpeta descomprimida ni un enlace.
-2. Ve a **Customize > Skills**, pulsa **"+"** y luego **"+ Create skill"**, y sube el ZIP.
-3. Claude lee el `SKILL.md`, muestra nombre y descripción, y la skill queda en tu lista con un toggle para activarla/desactivarla.
-
-Las skills que subes son privadas a tu cuenta; en planes Team/Enterprise un propietario puede habilitar compartirlas con la organización.
-
-### En Claude Code / Claude Desktop
+### En Claude Code
 
 ```bash
-mkdir -p ~/.claude/skills
-cd ~/.claude/skills
-git clone https://github.com/wrojasa/skill-sql-to-dbml.git sql-to-dbml
+git clone https://github.com/wrojasa/skill-sql-to-dbml.git ~/.claude/skills/sql-to-dbml
 ```
 
-Debe quedar `~/.claude/skills/skill-sql-to-dbml/SKILL.md` directo (sin anidar un nivel de más). Inicia una sesión nueva y confírmalo con `/skills`. Para que la skill viaje con un repo concreto en vez de ser global, ponla en `.claude/skills/` dentro del proyecto.
+Debe quedar `~/.claude/skills/sql-to-dbml/SKILL.md`, sin un nivel de carpeta de
+más. Inicia una sesión nueva y confírmalo con `/skills`. Para que la skill viaje
+con un repo concreto en vez de ser global, ponla en `.claude/skills/sql-to-dbml/`
+dentro del proyecto. Para actualizarla: `git -C ~/.claude/skills/sql-to-dbml pull`.
+
+### En Claude.ai, la app de escritorio o Cowork
+
+Claude.ai pide un **ZIP** cuya carpeta raíz se llame igual que la skill,
+`sql-to-dbml`, con `SKILL.md`, `references/` y `examples/` dentro. El botón
+**Code → Download ZIP** de GitHub no sirve tal cual: su carpeta raíz se llama
+`skill-sql-to-dbml-main`. Genera el ZIP desde un clon:
+
+```bash
+git archive --format=zip --prefix=sql-to-dbml/ -o sql-to-dbml.zip HEAD
+```
+
+Luego ve a **Customize > Skills**, pulsa **"+"** y **"+ Create skill"**, y sube
+el ZIP. Si ya la tenías, reemplázala con el ZIP nuevo: una versión subida solo
+con `SKILL.md` deja sin efecto las referencias a `references/` y `examples/`.
+
+Las skills que subes son privadas a tu cuenta; en planes Team/Enterprise un
+propietario puede habilitar compartirlas con la organización.
 
 ### Estructura
 
 ```
-skill-sql-to-dbml/
+sql-to-dbml/
 ├── SKILL.md
 ├── references/
-│   ├── mapping-ansi-dbml.md
-│   └── plugin-subset.md
+│   ├── mapping-ansi-dbml.md   reglas finas por dialecto
+│   └── plugin-subset.md       qué dibuja, ignora o pierde el plugin
 └── examples/
-    ├── 01-basico.sql / .dbml
-    ├── 02-cardinalidad.sql / .dbml
-    └── 03-degradaciones.sql / .dbml
+    ├── 01-basico               FK inline, PK con not null
+    ├── 02-cardinalidad         FK nullable, autorrelación, 1:1
+    ├── 03-degradaciones        esquema, enum, PK compuesta, UNIQUE, DEFAULT
+    ├── 04-incremental          bloque con estado del plugin + tabla nueva
+    ├── 05-sqlserver            script de SSMS
+    ├── 06-mysql                SHOW CREATE TABLE de MySQL
+    └── 07-postgres             pg_dump de PostgreSQL
 ```
 
-El error más común es el **doble anidamiento**: el `SKILL.md` debe quedar directo dentro de la carpeta de la skill. Esta skill **no usa tags ni releases**: siempre se toma el estado actual de `main`.
+Esta skill **no usa tags ni releases**: siempre se toma el estado actual de `main`.
 
 ## Uso
 
@@ -66,45 +81,57 @@ Ejemplos de cómo pedirlo:
 
 - "Pásame el dbml de este script" + pegar los `CREATE TABLE`.
 - "Convierte estas tablas a dbml para el plugin."
-- "Agrega esta tabla al dbml" (modo incremental).
-- "Genera el dbml y aplica mis convenciones" (activa PK surrogate + auditoría + FK `_id`).
+- "Agrega esta tabla al dbml" + pegar el bloque actual (modo incremental).
+- "Genera el dbml y aplica mis convenciones" (PK surrogate + auditoría + nombres de FK).
+- "Convert this SQL to DBML."
 
-Entrada:
+Entrada (`examples/01-basico.sql`):
 
 ```sql
 CREATE TABLE department (
   id   INTEGER PRIMARY KEY,
   name VARCHAR(100) NOT NULL
 );
+
 CREATE TABLE employee (
   id            INTEGER PRIMARY KEY,
   full_name     VARCHAR(150) NOT NULL,
+  email         VARCHAR(150),
   department_id INTEGER NOT NULL REFERENCES department(id)
 );
 ```
 
-Salida:
+Salida (`examples/01-basico.dbml`):
 
 ```dbml
 Table department {
-  id integer [pk]
+  id integer [pk, not null]
   name varchar(100) [not null]
 }
 
 Table employee {
-  id integer [pk]
+  id integer [pk, not null]
   full_name varchar(150) [not null]
+  email varchar(150)
   department_id integer [not null, ref: > department.id]
 }
 ```
 
-Más casos (cardinalidad 1:1, PK compuesta, enums, defaults) en `examples/`.
+Pega el bloque en una nota a nivel raíz, no dentro de un callout ni de una
+lista: ahí el plugin dibuja, pero no guarda posiciones ni permite editar.
 
 ## Alcance
 
-- Dialecto de entrada: **ANSI / SQL genérico**. Se ignora el ruido de despliegue (`GO`, `USE`, `SET`).
-- Salida: **solo el subset** que renderiza el plugin DBML ER Diagrams.
+- Entrada: ANSI y los dialectos de SQL Server, PostgreSQL y MySQL. Se ignora el ruido de despliegue (`GO`, `USE`, `SET`, `ON [PRIMARY]`, `ENGINE=`).
+- Salida: **solo el subset** que renderiza el plugin DBML ER Diagrams y acepta dbdiagram.io.
 - No inventa columnas ni convenciones por defecto; transcribe lo que indiques.
+- No convierte DBML a SQL ni diseña modelos de datos desde cero.
+
+## Mantenimiento
+
+`references/plugin-subset.md` describe el parser del plugin en la versión
+indicada arriba. Cuando el plugin cambie su parser o el estado que guarda en el
+bloque, actualiza ese archivo y la versión en `SKILL.md` y en este README.
 
 ## Licencia
 

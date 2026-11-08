@@ -1,0 +1,29 @@
+Table proyecto {
+  id integer [pk, not null]
+  nombre varchar(120) [not null]
+  etiquetas text_array
+  presupuesto numeric(14,2)
+  inicio timestamptz [not null]
+  costo_total numeric(14,2) [note: 'GENERATED ALWAYS AS (presupuesto * 1.19) STORED']
+  Note: 'Proyectos activos e históricos'
+}
+
+Table tarea {
+  id bigint [pk, not null]
+  proyecto_id integer [not null]
+  titulo text [not null]
+  peso double [note: 'Peso relativo dentro del proyecto']
+  meta jsonb
+  Note: 'proyecto_id: ON DELETE CASCADE'
+}
+
+Table bitacora {
+  id bigint [pk, not null]
+  proyecto_id integer
+  registrado_en timestamp [pk, not null]
+  detalle text
+  Note: 'Particionada por RANGE (registrado_en). Particiones: bitacora_2025'
+}
+
+Ref: tarea.proyecto_id > proyecto.id
+Ref: bitacora.proyecto_id > proyecto.id

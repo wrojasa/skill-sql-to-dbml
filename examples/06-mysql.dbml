@@ -1,0 +1,25 @@
+Table usuario {
+  id int [pk, not null]
+  email varchar(150) [not null]
+  rol rol_enum [not null]
+  permisos permisos_set
+  creado_en datetime [not null]
+  Note: 'Usuarios del portal. UNIQUE: (email). enum rol_enum: admin, editor, lector. set permisos_set: leer, escribir, borrar'
+}
+
+Table perfil {
+  usuario_id int [not null]
+  bio text [note: 'Texto libre del perfil']
+  avatar_url varchar(255)
+  Note: 'usuario_id: ON DELETE CASCADE'
+}
+
+Table articulo {
+  id int [pk, not null]
+  autor_id int
+  titulo varchar(200) [not null]
+  Note: 'autor_id: ON DELETE SET NULL'
+}
+
+Ref: perfil.usuario_id - usuario.id
+Ref: articulo.autor_id > usuario.id

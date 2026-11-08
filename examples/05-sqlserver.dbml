@@ -1,0 +1,29 @@
+Table Cliente {
+  IdCliente int [pk, not null]
+  Nit varchar(20) [not null]
+  RazonSocial nvarchar(200) [not null]
+  FechaRegistro datetime2(7) [not null]
+  Note: 'UNIQUE: (Nit)'
+}
+
+Table Contrato {
+  IdContrato int [pk, not null]
+  IdCliente int [not null]
+  Codigo varchar(30) [not null, note: 'Codigo interno del contrato']
+  Valor numeric(18,2) [not null]
+  Observaciones nvarchar(max)
+  IdContratoPadre int
+  ValorConIva computed [note: 'AS (Valor * 1.19) PERSISTED']
+  Note: 'Contratos firmados con clientes. CHECK: Valor >= 0'
+}
+
+Table ContratoPoliza {
+  IdContrato int [pk, not null]
+  NumeroPoliza varchar(40) [not null]
+  Aseguradora nvarchar(120) [not null]
+  Note: 'IdContrato: ON DELETE CASCADE'
+}
+
+Ref: Contrato.IdCliente > Cliente.IdCliente
+Ref: Contrato.IdContratoPadre > Contrato.IdContrato
+Ref: ContratoPoliza.IdContrato - Contrato.IdContrato

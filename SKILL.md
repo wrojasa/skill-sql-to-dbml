@@ -1,194 +1,251 @@
 ---
 name: sql-to-dbml
 description: >
-  Convierte scripts SQL CREATE TABLE (ANSI genérico) o tablas que se van
-  definiendo en código DBML compatible con el plugin de Obsidian "DBML ER
-  Diagrams". Usar SIEMPRE que el usuario pida generar o convertir DBML, comparta
-  un script de creación de tablas y quiera verlo como diagrama, o diga "pásame el
-  dbml de", "convierte este CREATE TABLE a dbml", "genera el dbml de estas
-  tablas", "dbml para el plugin", "arma el ERD en dbml", "el diagrama de estas
-  tablas", "agrega esta tabla al dbml", "actualiza el dbml con". También al
-  construir tablas de forma incremental y querer mantener el bloque dbml al día
-  para Obsidian o dbdiagram.io. Activar aunque no se diga literalmente "DBML".
+  Convierte scripts SQL CREATE TABLE (ANSI, SQL Server, PostgreSQL o MySQL) o
+  tablas que se van definiendo en código DBML que renderiza en el plugin de
+  Obsidian "DBML ER Diagrams" y en dbdiagram.io. Usar SIEMPRE que el usuario
+  pida generar o convertir DBML, comparta un script de creación de tablas y
+  quiera verlo como diagrama, o diga "pásame el dbml de", "convierte este
+  CREATE TABLE a dbml", "genera el dbml de estas tablas", "dbml para el
+  plugin", "arma el ERD en dbml", "el diagrama de estas tablas", "agrega esta
+  tabla al dbml", "actualiza el dbml con". También en inglés: "convert this SQL
+  to DBML", "generate the DBML or ERD for these tables", "add this table to the
+  dbml". Activar aunque no se diga literalmente "DBML", también para mantener al
+  día un bloque dbml existente. No usar para convertir DBML a SQL ni para
+  diseñar un modelo de datos desde cero.
 ---
 
-# SQL → DBML (para el plugin DBML ER Diagrams)
+# SQL → DBML para el plugin DBML ER Diagrams
 
-Genera **DBML** a partir de SQL `CREATE TABLE` (ANSI genérico) o de tablas que se
-van definiendo en la conversación. El objetivo es DBML que **renderice bien en el
-plugin de Obsidian "DBML ER Diagrams"**, cuyo motor soporta un subconjunto de
-DBML. Todo lo que el plugin no dibuja se degrada a una forma equivalente del
-subconjunto (ver §6), nunca se emite sintaxis que el plugin no entienda.
+Genera DBML a partir de SQL `CREATE TABLE` o de tablas descritas en la
+conversación. La salida se limita al subconjunto de DBML que el plugin de
+Obsidian "DBML ER Diagrams" dibuja y que dbdiagram.io también acepta. Lo que
+queda fuera de ese subconjunto se degrada (§6). Nunca se emite sintaxis que
+alguno de los dos no entienda.
 
-## Índice
+**Verificada contra el plugin v0.1.21.** Si el plugin cambia su parser,
+actualizar primero `references/plugin-subset.md`.
 
-1. [Modos de uso](#1-modos-de-uso)
-2. [Sintaxis DBML objetivo (subset del plugin)](#2-sintaxis-dbml-objetivo-subset-del-plugin)
-3. [Mapeo SQL → DBML](#3-mapeo-sql--dbml)
-4. [Cardinalidad de relaciones](#4-cardinalidad-de-relaciones)
-5. [Identificadores](#5-identificadores)
-6. [Degradaciones (solo-subset)](#6-degradaciones-solo-subset)
-7. [Convenciones opcionales (off por defecto)](#7-convenciones-opcionales-off-por-defecto)
-8. [Modo incremental: preservar el bloque](#8-modo-incremental-preservar-el-bloque)
-9. [Formato de entrega](#9-formato-de-entrega)
-10. [Checklist antes de entregar](#10-checklist-antes-de-entregar)
+## Archivos de apoyo
 
-Para el detalle fino de cada conversión, leer `references/mapping-ansi-dbml.md`.
-Para qué soporta/ignora el plugin exactamente, leer `references/plugin-subset.md`.
-Ejemplos entrada→salida en `examples/`.
+- `references/mapping-ansi-dbml.md`: reglas finas por dialecto. Leerlo siempre
+  que el script traiga algo más que `CREATE TABLE` simples: `ALTER TABLE`,
+  scripts de SSMS, MySQL o PostgreSQL, tipos raros, comentarios, enums,
+  columnas computadas, herencia o particiones.
+- `references/plugin-subset.md`: qué dibuja el plugin, qué ignora, qué pierde
+  en silencio y qué estado guarda dentro del bloque. Leerlo en modo
+  incremental o cuando el usuario diga que algo no aparece en el diagrama.
+- `examples/`: pares `.sql` → `.dbml`.
+
+| Ejemplo | Qué muestra |
+| --- | --- |
+| `01-basico` | FK inline `not null`, PK con `not null` |
+| `02-cardinalidad` | FK nullable, autorrelación, 1:1 con `-`, comentario `--` a `note` |
+| `03-degradaciones` | esquema quitado, enum `CREATE TYPE`, PK compuesta, UNIQUE, DEFAULT, FK dentro de PK compuesta sigue con `>` |
+| `04-incremental` | bloque con estado del plugin (`-antes.dbml`), tabla nueva (`.sql`), resultado (`-despues.dbml`) |
+| `05-sqlserver` | script de SSMS: corchetes, `IDENTITY`, `COLLATE`, PK y FK por `ALTER`, case distinto, columna computada, `MS_Description`, `ON DELETE CASCADE` |
+| `06-mysql` | backticks, `int(11) unsigned`, `ENUM` y `SET` inline, `COMMENT`, `UNIQUE KEY` sobre FK, `KEY`, `ENGINE` |
+| `07-postgres` | estilo pg_dump: `public.`, arrays, identidad, columna generada, alias de tipos, `ALTER TABLE ONLY`, `COMMENT ON`, particiones |
 
 ---
 
 ## 1. Modos de uso
 
-**A. Desde script** — el usuario pega uno o varios `CREATE TABLE` (y opcional
-`ALTER TABLE ... ADD CONSTRAINT FOREIGN KEY`). Parsear todo el lote, resolver las
-FKs (incluidas las definidas por `ALTER`), emitir el bloque DBML completo.
+**A. Desde script.** El usuario pega uno o varios `CREATE TABLE`, con o sin
+`ALTER TABLE`. Resolver primero todas las tablas y columnas, después todas las
+relaciones (inline, constraint y `ALTER`). Emitir el bloque completo.
 
-**B. Incremental** — el usuario va describiendo o agregando tablas y quiere
-mantener un bloque dbml actualizado. Agregar solo las tablas/relaciones nuevas y
-**preservar el bloque existente** tal cual (ver §8). No reordenar ni reescribir lo
-previo.
+**B. Incremental.** Ya existe un bloque dbml y el usuario agrega tablas o pide
+cambiar una tabla concreta. Ver §8.
 
-Si el lote mezcla varios dialectos o trae sintaxis ambigua, asumir ANSI/SQL
-estándar y señalar al final lo que se interpretó.
+Si el lote mezcla dialectos o trae sintaxis ambigua, aplicar la regla más
+cercana de `mapping-ansi-dbml.md` y decir al final qué se interpretó.
 
 ---
 
-## 2. Sintaxis DBML objetivo (subset del plugin)
+## 2. Sintaxis de salida
 
-Emitir **únicamente** estas construcciones:
+Emitir **únicamente** esta forma:
 
 ```dbml
-Table nombre_tabla [headercolor: #20479e] {
-  col_a integer [pk, not null]
-  col_b varchar(100) [not null, note: 'texto sin comillas simples']
-  col_c decimal(12,2)
-  fk_col integer [not null, ref: > otra_tabla.id]
-  Note: 'nota a nivel de tabla'
+Table cliente {
+  id integer [pk, not null]
+  nombre varchar(100) [not null, note: 'nombre comercial']
+  saldo decimal(12,2)
+  Note: 'nota de tabla, una sola línea, al final del cuerpo'
 }
 
-Ref: tabla_a.fk_col > tabla_b.id
+Table vendedor [headercolor: #20479e] {
+  id integer [pk, not null]
+  nombre varchar(100) [not null]
+}
+
+Table pedido {
+  id integer [pk, not null]
+  cliente_id integer [not null, ref: > cliente.id]
+  vendedor_id integer
+}
+
+Ref: pedido.vendedor_id > vendedor.id
 ```
 
-Reglas del subset:
-- Nombres de tabla y columna: `[A-Za-z0-9_]+` (snake_case). Sin comillas, sin espacios, sin esquema. Ver §5.
-- Settings de columna permitidos: `pk`, `not null`, `note: '...'`, `ref: <op> tabla.col`. Nada más (`unique`, `increment`, `default` **no** se emiten).
-- `headercolor: #hex` es opcional y va en los settings de la tabla `[ ... ]`. Off por defecto (ver §7).
-- `Note: '...'` a nivel de tabla: una sola línea, comillas simples, **sin apóstrofes dentro**.
-- Tipos: se conservan tal cual del SQL (`integer`, `varchar(100)`, `decimal(12,2)`, `uuid`, `timestamp`, `boolean`, `text`, …). El plugin solo los muestra como texto; pueden llevar paréntesis, coma y espacios.
-- Relaciones: inline `[ref: <op> tabla.col]` **o** línea suelta `Ref: a.col <op> b.col`. Usar líneas `Ref:` para FKs de constraint a nivel de tabla; inline para `REFERENCES` en la propia columna. No mezclar duplicando la misma relación.
-- `op` ∈ `>` `<` `<>` `-` (ver §4).
-- **Nunca** emitir: `indexes { }`, `enum`, `TableGroup`, refs multi-columna, `default`, `unique`. El plugin los ignora o no los parsea.
+Reglas de forma. Cada una evita una pérdida silenciosa en el plugin; el
+detalle está en `plugin-subset.md`.
+
+- `Table` con T mayúscula, nombre y `{` en la misma línea, una declaración por línea.
+- Nombres de tabla y columna: `[A-Za-z0-9_]+`, solo ASCII, sin comillas ni esquema (§5).
+- Una columna por línea: `nombre tipo [settings]`. El `]` se cierra en la misma línea y después no va nada: ni `,`, ni `;`, ni comentario.
+- Tipo en minúsculas, sin `[` ni `]`, sin espacios fuera de paréntesis (§3).
+- Settings permitidos, en este orden: `pk`, `not null`, `ref: > tabla.col` o `ref: - tabla.col`, `note: '...'`. Separados por `, `; `not null` con un solo espacio; `ref:` sin espacio antes de los dos puntos.
+- Toda columna `pk` lleva también `not null`. El plugin no lo deduce de `pk`.
+- Notas: comillas simples, una línea, sin apóstrofes y sin la secuencia `ref:`.
+- `Note:` de tabla: una sola por tabla, como última línea del cuerpo.
+- `Ref:` a nivel raíz, fuera de las llaves de cualquier tabla, con la forma exacta `Ref: hija.col > padre.col`.
+- `headercolor`: solo `#rrggbb`. No se emite salvo que el usuario lo pida (§7).
+- Orden: tablas padre antes que sus hijas, después las líneas `Ref:` (§9).
+
+**Nunca emitir:** `indexes { }`, bloques `enum`, `TableGroup`, `Project`,
+`Note { }` en bloque, notas con `'''`, comentarios `/* */`, refs
+multi-columna, settings `unique`, `default` o `increment`, settings en `Ref`
+(`[delete: ...]`), operadores `<` o `<>`, líneas `// @pos`, `// @edge`,
+`// @view`, `// @size`. Algunos son inofensivos para el plugin y otros borran
+tablas o crean columnas fantasma; `plugin-subset.md` los separa.
 
 ---
 
-## 3. Mapeo SQL → DBML
+## 3. Mapeo esencial
 
-| SQL (ANSI)                                   | DBML (subset)                                  |
-| -------------------------------------------- | ---------------------------------------------- |
-| `CREATE TABLE t (...)`                       | `Table t { ... }`                              |
-| `col TYPE`                                   | `col type`                                     |
-| `NOT NULL`                                   | `[not null]`                                   |
-| `PRIMARY KEY` (inline, 1 col)                | `[pk]`                                          |
-| `PRIMARY KEY (col)` (constraint, 1 col)      | marca esa columna `[pk]`                       |
-| `col TYPE REFERENCES p(c)` (inline)          | `col type [ref: > p.c]` + preservar `not null` |
-| `FOREIGN KEY (col) REFERENCES p(c)`          | línea `Ref: t.col > p.c`                       |
-| `DEFAULT ...`                                | omitido (documentar en `Note` si es relevante) |
-| `UNIQUE`, `CHECK`                            | omitido (documentar en `Note` si es relevante) |
-| `schema.tabla`                               | `tabla` (esquema removido, ver §5)             |
-| comentario de columna / `COMMENT ON`         | `[note: '...']`                                 |
+| SQL | DBML |
+| --- | --- |
+| `CREATE TABLE [esquema.]t (...)` | `Table t { ... }` |
+| `col TYPE` | `col type`, con el tipo normalizado (abajo) |
+| `NOT NULL` | `not null` |
+| `PRIMARY KEY` inline, por constraint o por `ALTER TABLE` | `[pk, not null]` |
+| `col TYPE REFERENCES p(c)` | `col type [ref: > p.c]`, preservando `not null` |
+| `FOREIGN KEY (col) REFERENCES p(c)` en `CREATE` o `ALTER` | `Ref: t.col > p.c` |
+| `DEFAULT`, `CHECK`, `UNIQUE`, `IDENTITY`, `ON DELETE` | omitidos; ver §6 |
+| comentario de columna | `[note: '...']` |
+| comentario de tabla | `Note: '...'` |
 
-Detalle completo y casos raros: `references/mapping-ansi-dbml.md`.
+Normalización del tipo, en este orden. El detalle por dialecto está en
+`mapping-ansi-dbml.md` §2.
+
+1. Quitar corchetes, comillas y backticks: `[nvarchar](50)` → `nvarchar(50)`. Un tipo que empieza con `[` hace que el plugin borre la columna.
+2. Minúsculas.
+3. Quitar lo que no es tipo: `IDENTITY(...)`, `AUTO_INCREMENT`, `COLLATE x`, `CHARACTER SET x`, `UNSIGNED`, `ZEROFILL`, `ROWGUIDCOL`, `SPARSE`, `NOT FOR REPLICATION`, y el ancho de enteros de MySQL: `int(11)` → `int`.
+4. Sin espacios fuera de paréntesis, porque dbdiagram.io los rechaza: `double precision` → `double`, `character varying(n)` → `varchar(n)`, `timestamp with time zone` → `timestamptz`, `timestamp without time zone` → `timestamp`. Sin alias conocido, entre comillas dobles: `"interval day to second"`.
+5. `serial`, `bigserial`, `smallserial` → `integer`, `bigint`, `smallint`.
+6. Arrays → `<base>_array`. Enum inline → `<col>_enum`. Columna computada sin tipo → `computed`. Ver §6.
 
 ---
 
-## 4. Cardinalidad de relaciones
+## 4. Relaciones y cardinalidad
 
-El plugin **deriva** la marca de cada extremo, no la lee explícita. Regla clave:
-la columna FK va siempre en el lado izquierdo (`from`) del `Ref`.
+El plugin no lee la cardinalidad: la deriva del operador y de la nulabilidad
+de la columna FK.
 
-- FK normal (muchos→uno): `Ref: hijo.fk_col > padre.pk`
-  - Lado `hijo`: pata de gallo (muchos).
-  - Lado `padre`: el plugin pone **barra** (obligatorio) si `fk_col` es `not null`, o **círculo** (opcional) si es nullable. → **Siempre preservar `not null`/nullable de la columna FK.**
-- FK que además es UNIQUE o PK (uno→uno): usar `-` → `Ref: hijo.fk_col - padre.pk`.
-- No invertir el sentido: no usar `<` salvo que la FK quede inevitablemente en el lado derecho. Por defecto, FK a la izquierda con `>`.
-- `<>` (muchos a muchos) **no** se genera desde un `CREATE TABLE`; una tabla puente produce dos `Ref` `>` (uno por cada FK).
+- **FK siempre a la izquierda, con `>`**: `Ref: hija.fk > padre.pk`. Lado hija: pata de gallo. Lado padre: **barra** si la FK es `not null`, **círculo** si es nullable. Preservar siempre la nulabilidad original de la FK.
+- **1:1 con `-`** solo si el conjunto de columnas de la FK coincide exactamente con una PK, un UNIQUE o un índice único de la tabla hija. Una FK que es solo parte de una PK o UNIQUE compuesta sigue con `>`. Una tabla puente produce dos `>`.
+- **Nunca `<`**: el plugin pone el ícono 🔗 en la columna de la izquierda y la FK real queda sin ícono. **Nunca `<>`**: N:M se modela con la tabla puente.
+- **Inline o `Ref:`**: inline `[ref: ...]` cuando el SQL usa `REFERENCES` en la columna; línea `Ref:` para `FOREIGN KEY` de constraint o de `ALTER`. Cada relación se declara una sola vez: nunca inline y `Ref:` a la vez, ni dos operadores para el mismo par.
+- **Ambos extremos deben existir** en el bloque, con el mismo case. Si la tabla o columna destino no está en el lote, no emitir la relación: documentarla en la `Note:` de la tabla como `FK pendiente: col -> tabla.col` y avisarlo. El plugin descarta en silencio una relación con un extremo inexistente y dbdiagram.io rechaza el bloque entero.
+- FK multi-columna: ver §6.
 
 ---
 
 ## 5. Identificadores
 
-- Quitar el esquema: `ventas.pedido` → `pedido`. Si al quitar esquemas hay colisión de nombres entre tablas, conservar un prefijo (`ventas_pedido`) y avisarlo.
-- Quitar comillas/corchetes/backticks: `"Mi Tabla"`, `[Mi Tabla]`, `` `mi tabla` `` → normalizar a snake_case: `mi_tabla`.
-- Caracteres no válidos o espacios → reemplazar por `_`. Acentos → sin acento.
-- Aplicar la misma normalización a los nombres usados en los `Ref` para que coincidan con la tabla/columna destino.
+- **Esquema fuera**: `dbo.cliente`, `[dbo].[cliente]`, `ventas.pedido` → `cliente`, `pedido`. Si dos tablas chocan al quitarlo, usar `esquema_tabla` en ambas y avisarlo.
+- **Delimitadores fuera**: quitar `"..."`, `[...]` y backticks. Espacios y símbolos → `_`. Acentos y ñ → ASCII: `año` → `anio`. El plugin borra en silencio tablas o columnas con caracteres fuera de `[A-Za-z0-9_]`.
+- **Case canónico**: el nombre se escribe como aparece en su `CREATE TABLE` o en la definición de la columna. Las referencias (`REFERENCES`, `FOREIGN KEY`, `ALTER TABLE`) se emparejan sin distinguir mayúsculas y se reescriben con esa forma. SQL sin comillas no distingue case; el plugin y dbdiagram.io sí.
+- Usar el mismo mapa nombre original → nombre DBML para tablas, columnas y refs.
+- **Nombres que el plugin malinterpreta**: una columna llamada `indexes` se descarta, y una tabla o columna llamada `pk` usada como destino de un `ref` marca la FK como PK. Renombrarlas a `indexes_` o `pk_` y avisarlo.
 
 ---
 
-## 6. Degradaciones (solo-subset)
+## 6. Degradaciones
 
-El plugin solo dibuja el subset. Cuando el SQL trae algo fuera de él, degradar así
-y **documentar lo perdido en un `Note:` de la tabla** (una línea, sin apóstrofes):
+Lo que el plugin no dibuja se omite y, si aporta información, se documenta en
+la `Note:` de la tabla. **El plugin v0.1.21 no muestra las notas**, ni de
+tabla ni de columna. La nota queda en el texto del bloque y se ve en
+dbdiagram.io. No decirle al usuario que la verá en el diagrama de Obsidian.
 
-| Construcción SQL          | Degradación en el subset                                                            |
-| ------------------------- | ----------------------------------------------------------------------------------- |
-| PK compuesta `(a, b)`     | marcar `[pk]` en **cada** columna miembro + `Note: 'PK compuesta: (a, b)'`           |
-| FK multi-columna          | emitir **un** `Ref` con el **primer** par de columnas + `Note` con la FK completa    |
-| `enum`/`CREATE TYPE`      | el tipo de la columna queda como el nombre del enum (texto); listar valores en `Note`; descartar el `CREATE TYPE` |
-| `DEFAULT`                 | omitir; si aporta info, mencionarlo en `Note`                                        |
-| `UNIQUE` / `CHECK`        | omitir; si aporta info, mencionarlo en `Note`                                        |
+| SQL | Salida |
+| --- | --- |
+| PK compuesta `(a, b)` | `[pk, not null]` en cada columna miembro. dbdiagram.io lo lee como PK compuesta; no hace falta Note. |
+| FK multi-columna | un solo `Ref` con el primer par de columnas + Note `FK compuesta: (a, b) -> p(x, y)` |
+| `CREATE TYPE x AS ENUM` | tipo `x`; Note `enum x: a, b, c`; descartar el `CREATE TYPE` |
+| `ENUM('a','b')` inline | tipo `<col>_enum`; Note `enum <col>_enum: a, b` |
+| `SET('a','b')` de MySQL | tipo `<col>_set`; Note `set <col>_set: a, b` |
+| array `text[]` | tipo `text_array` |
+| columna computada | tipo `computed` o el tipo declarado; `note:` con la expresión |
+| `DEFAULT`, `CHECK` | omitir; Note solo si codifica una regla de negocio |
+| `UNIQUE` | omitir; decide 1:1 (§4); Note `UNIQUE: (cols)` si es una clave natural |
+| `IDENTITY`, `AUTO_INCREMENT`, `SERIAL` | omitir, sin Note |
+| `ON DELETE` / `ON UPDATE` | omitir `NO ACTION` y `RESTRICT`; Note `col: ON DELETE CASCADE` para `CASCADE`, `SET NULL` o `SET DEFAULT` |
+| índices no únicos | omitir, sin Note |
+| particiones, `INHERITS` | ver `mapping-ansi-dbml.md` §10 |
 
-Objetivo: que el bloque **siempre renderice** en Obsidian, aunque se pierda detalle
-no visual. El detalle perdido queda trazado en la `Note`.
-
----
-
-## 7. Convenciones opcionales (off por defecto)
-
-**No** inventar columnas ni inferir convenciones por defecto: transcribir solo lo
-que el SQL o el usuario indiquen. Esto mantiene la skill útil para cualquiera.
-
-Activar convenciones **solo si el usuario lo pide explícitamente** ("aplica mis
-convenciones", "agrega auditoría", "ponle PK surrogate", "colorea por módulo"):
-
-- **PK surrogate**: si una tabla no tiene PK, agregar `id <tipo> [pk]`.
-- **Auditoría**: agregar `created_at`, `updated_at`, `created_by_id`, `updated_by_id`, `is_active`.
-- **FK naming**: nombrar FKs como `<entidad>_id`.
-- **headercolor por módulo/esquema**: asignar un color por prefijo/esquema de tabla con `[headercolor: #hex]` y mostrar la leyenda color↔módulo.
-
-Si se activan, decirlo explícitamente en la respuesta para que el usuario sepa qué
-se añadió.
+Todas las degradaciones de una tabla van en su única `Note:`, separadas por
+`. `. El comentario propio de la tabla, si existe, va primero.
 
 ---
 
-## 8. Modo incremental: preservar el bloque
+## 7. Convenciones opcionales (apagadas por defecto)
 
-Cuando se agregan tablas a un bloque dbml existente (modo B):
+No inventar columnas ni convenciones: transcribir solo lo que el SQL o el
+usuario indiquen. Activar únicamente si el usuario lo pide:
 
-- **No tocar** las líneas `// @pos ...` ni `// @view ...`: son posiciones y vista que el plugin gestiona. Mantenerlas tal cual.
-- **No tocar** los `[headercolor: #hex]` ya puestos por el usuario.
-- **No reordenar ni reescribir** las tablas/relaciones existentes.
-- Agregar las nuevas `Table` y sus `Ref` **antes** del bloque de comentarios `// @pos`/`// @view` (si existe), o al final si no existe.
-- Si el usuario quiere reemplazar todo, confirmarlo antes (perdería posiciones guardadas).
+| El usuario dice | Se aplica |
+| --- | --- |
+| "aplica mis convenciones" | PK surrogate + auditoría + nombres de FK |
+| "ponle PK surrogate" | a cada tabla sin PK, primera columna `id integer [pk, not null]`, o el tipo de PK más usado en el lote |
+| "agrega auditoría" | al final de cada tabla: `created_at timestamp [not null]`, `updated_at timestamp`, `created_by_id integer`, `updated_by_id integer`, `is_active boolean [not null]`. Sin `ref`, salvo que el usuario diga cuál es la tabla de usuarios. |
+| "nombra las FK" | renombrar cada FK a `<tabla_padre>_id` y reescribir sus refs |
+| "colorea por módulo" | `[headercolor: #rrggbb]` por esquema o prefijo, y una leyenda color ↔ módulo en la respuesta |
+
+Paleta sugerida para módulos: `#20479e`, `#2e7d32`, `#c62828`, `#6a1b9a`,
+`#ef6c00`, `#00838f`. Decir siempre en la respuesta qué se agregó o renombró.
+
+---
+
+## 8. Modo incremental
+
+El bloque existente es la fuente de verdad: el usuario pudo cambiarlo desde el
+canvas, renombrando, coloreando o cambiando cardinalidades. Leerlo completo
+antes de editar.
+
+- **No tocar el estado del plugin**: ninguna línea `// @pos`, `// @edge`, `// @view`, `// @size` ni `// height:`, y ningún `headercolor` existente, tenga el formato que tenga.
+- **No reordenar ni reescribir** tablas o relaciones existentes. Si el usuario pide cambiar una tabla, tocar solo las líneas pedidas y fusionar los datos nuevos en su `Note:` existente.
+- **Dónde va una tabla nueva**: antes de la primera tabla existente que la referencia; si ninguna la referencia, después de la última tabla. Así los padres quedan antes que las hijas. En v0.1.21, renombrar o borrar una tabla desde el canvas ataca la primera línea que empiece con su nombre; con la tabla hija antes, renombrar `vendedor` modificaría la columna `vendedor_id`.
+- **Relaciones nuevas**: inline en la tabla nueva, o una línea `Ref:` nueva después de las existentes, nunca dentro de un cuerpo de tabla.
+- **FK pendientes**: si la tabla nueva resuelve un `FK pendiente` de una Note, agregar la relación y quitar ese ítem de la Note. Si era el único, quitar la línea `Note:`.
+- El plugin reescribe las líneas `// @` al final del bloque cada vez que guarda el layout, así que su posición relativa da igual. Lo único prohibido es borrarlas o cambiarlas.
+- Las tablas nuevas se ubican solas y pueden quedar encima de tablas que el usuario fijó. Avisarlo para que las mueva.
+- **Regenerar todo** solo con confirmación. Si se regenera, conservar al final las líneas `// @` existentes: las posiciones de tablas que mantienen su nombre se respetan.
 
 ---
 
 ## 9. Formato de entrega
 
-- Salida principal: un bloque ```` ```dbml ```` listo para pegar en una nota de Obsidian.
-- Si el usuario pide archivo: generar `<nombre>.dbml` (mismo contenido sin las fences).
-- Tras el bloque, una línea breve con lo que se interpretó/omitió (degradaciones aplicadas), sin relleno.
-- No agregar `// @pos`/`// @view`: esos los escribe el plugin al organizar el diagrama.
+- Salida principal: un bloque ```` ```dbml ```` listo para pegar. Va a nivel raíz de la nota: dentro de un callout `> [!note]` o de un ítem de lista el plugin dibuja, pero no guarda posiciones ni permite editar.
+- Orden: tablas padre antes que hijas, en orden topológico; en ciclos, el orden del script. Después, las líneas `Ref:`.
+- Si piden archivo: `<nombre>.dbml`, UTF-8 sin BOM, sin fences. Aclarar que Obsidian no dibuja archivos `.dbml` sueltos: el archivo sirve para dbdiagram.io o `@dbml/cli`; en Obsidian el contenido va dentro de un bloque en una nota `.md`.
+- Después del bloque, una línea breve con lo interpretado: degradaciones, FK pendientes, nombres cambiados, convenciones aplicadas.
 
 ---
 
 ## 10. Checklist antes de entregar
 
-1. Todos los nombres de tabla/columna son `[A-Za-z0-9_]+` (sin esquema, comillas ni espacios).
-2. Cada `Ref` apunta a una tabla y columna que **existen** en el bloque.
-3. Las columnas FK conservan su `not null`/nullable original (afecta la marca del plugin).
-4. No quedó ninguna construcción fuera del subset (`indexes`, `enum`, `default`, `unique`, refs multi-columna).
-5. Las `Note:` no contienen apóstrofes (rompen el parser).
-6. Cada degradación aplicada quedó documentada en una `Note`.
-7. En modo incremental, los comentarios `// @pos`/`// @view` y los `headercolor` previos siguen intactos.
+1. Nombres `[A-Za-z0-9_]+`, ASCII, sin esquema ni comillas, con el case canónico en tablas, columnas y refs.
+2. `Table` con mayúscula, `{` en la misma línea, todas las llaves cerradas, una declaración por línea.
+3. Una columna por línea, `]` cerrado en la misma línea y nada después.
+4. Tipos en minúsculas, sin `[`, sin espacios fuera de paréntesis salvo entre comillas dobles.
+5. Toda columna `pk` tiene `not null`; cada FK conserva su nulabilidad original.
+6. Cada relación: FK a la izquierda, operador `>` o `-`, ambos extremos existen, declarada una sola vez, `Ref:` fuera de los cuerpos de tabla.
+7. `-` solo donde la FK coincide exactamente con una PK o UNIQUE.
+8. Notas con comillas simples, en una línea, sin apóstrofes ni `ref:`; una `Note:` por tabla, al final del cuerpo.
+9. Nada de la lista "Nunca emitir" de §2.
+10. Cada degradación con información útil quedó en una Note y la respuesta la resume.
+11. Tablas padre antes que hijas.
+12. Incremental: líneas `// @` y `// height:` intactas, `headercolor` previos intactos, tablas existentes en su orden.

@@ -1,0 +1,17 @@
+Table cliente [headercolor: #20479e] {
+  id integer [pk, not null]
+  nombre varchar(100) [not null]
+}
+
+Table pedido {
+  id integer [pk, not null]
+  cliente_id integer [not null, ref: > cliente.id]
+  vendedor_id integer
+  fecha date [not null]
+  Note: 'FK pendiente: vendedor_id -> vendedor.id'
+}
+// @pos cliente 40 60
+// @pos pedido 380 40
+// @edge pedido cliente_id cliente id 300 120 300 90
+// @view 0 0 1.000
+// @size 900 520
