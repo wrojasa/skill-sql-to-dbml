@@ -10,7 +10,8 @@ El DBML generado se ciñe al subconjunto que ese plugin renderiza y que
 equivalente del subconjunto y se documenta en una nota, de modo que el bloque
 **siempre renderiza**.
 
-**Compatibilidad:** verificada contra DBML ER Diagrams **v0.1.21**.
+**Compatibilidad:** verificada contra DBML ER Diagrams **v0.2.0**. Los bloques
+que genera también funcionan en versiones anteriores del plugin.
 
 ## Qué hace
 
@@ -18,10 +19,11 @@ equivalente del subconjunto y se documenta en una nota, de modo que el bloque
 - Normaliza scripts reales: corchetes y `IDENTITY` de SSMS, backticks y `int(11) unsigned` de MySQL, esquemas, arrays y alias de tipos de PostgreSQL, diferencias de mayúsculas entre tablas y referencias.
 - Detecta PK, NOT NULL y FKs. Toda PK sale con `not null`, y cada FK conserva su nulabilidad, que es lo que decide la marca obligatorio u opcional en el diagrama.
 - Orienta las relaciones como el plugin las espera (`hija.fk > padre.pk`) y usa `-` solo para un 1:1 real.
-- Modo incremental: agrega tablas a un bloque existente **sin tocar** el estado que guarda el plugin (`// @pos`, `// @edge`, `// @view`, `// @size`) ni los colores que ya pusiste.
+- Modo incremental: agrega tablas a un bloque existente **sin tocar** el estado que guarda el plugin (`// @pos`, `// @edge`, `// @view`, `// @size`, `// @group`), los colores que ya pusiste ni tus áreas.
+- Áreas de trabajo: si se lo pides ("agrupa por áreas", "por esquema" o "por módulo"), agrupa las tablas en bloques `TableGroup` con color, que el plugin dibuja como áreas desde v0.2.0.
 - Convenciones (PK surrogate, columnas de auditoría, nombres de FK, color por módulo): **opcionales**, solo si las pides.
 
-El plugin v0.1.21 no muestra las notas en el diagrama. Las degradaciones quedan
+El plugin (v0.2.0) no muestra las notas en el diagrama. Las degradaciones quedan
 en el texto del bloque y se ven en dbdiagram.io.
 
 ## Instalación
@@ -67,10 +69,11 @@ sql-to-dbml/
     ├── 01-basico               FK inline, PK con not null
     ├── 02-cardinalidad         FK nullable, autorrelación, 1:1
     ├── 03-degradaciones        esquema, enum, PK compuesta, UNIQUE, DEFAULT
-    ├── 04-incremental          bloque con estado del plugin + tabla nueva
+    ├── 04-incremental          bloque con estado del plugin y un área + tabla nueva
     ├── 05-sqlserver            script de SSMS
     ├── 06-mysql                SHOW CREATE TABLE de MySQL
-    └── 07-postgres             pg_dump de PostgreSQL
+    ├── 07-postgres             pg_dump de PostgreSQL
+    └── 08-areas                agrupar por áreas (un TableGroup por esquema)
 ```
 
 Esta skill **no usa tags ni releases**: siempre se toma el estado actual de `main`.
@@ -83,6 +86,7 @@ Ejemplos de cómo pedirlo:
 - "Convierte estas tablas a dbml para el plugin."
 - "Agrega esta tabla al dbml" + pegar el bloque actual (modo incremental).
 - "Genera el dbml y aplica mis convenciones" (PK surrogate + auditoría + nombres de FK).
+- "Pásame el dbml y agrupa por áreas" (un área por esquema, o por el criterio que indiques).
 - "Convert this SQL to DBML."
 
 Entrada (`examples/01-basico.sql`):

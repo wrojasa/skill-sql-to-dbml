@@ -104,7 +104,7 @@ Aplicar en orden:
 - `ENUM('a','b')` inline de MySQL: tipo `<col>_enum` y Note `enum <col>_enum: a, b`. Si dos tablas tienen enums distintos con el mismo nombre de columna, usar `<tabla>_<col>_enum`.
 - `SET('a','b')` de MySQL: tipo `<col>_set` y Note `set <col>_set: a, b`.
 - No dejar `enum('a','b')` como tipo. El plugin y dbdiagram.io lo aceptan, pero la tabla se ensancha con todos los valores y mete apóstrofes en una línea de columna. Se usa `<col>_enum` por coherencia con `CREATE TYPE`. Si el usuario prefiere ver los valores en el diagrama, puede pedirlo: la Note no se muestra en el plugin.
-- Nunca emitir un bloque `enum x { }`. Un `enum {` sin nombre crea una tabla fantasma en el plugin.
+- Nunca emitir un bloque `enum x { }`: el plugin lo ignora y queda fuera del subset. Hasta v0.1.21, un `enum {` sin nombre creaba una tabla fantasma.
 
 ## 7. Columnas computadas e identidad
 
@@ -114,13 +114,12 @@ Aplicar en orden:
 
 ## 8. Esquemas, identificadores y case
 
-- **Esquema**: `esquema.tabla` → `tabla`, también en refs y tipos. Si dos tablas chocan, `esquema_tabla` en ambas y avisarlo.
+- **Esquema**: `esquema.tabla` → `tabla`, también en refs y tipos. Si dos tablas chocan, `esquema_tabla` en ambas y avisarlo. Si el usuario pide agrupar por áreas, recordar el esquema original de cada tabla: es el criterio por defecto para formar las áreas (`SKILL.md` §7).
 - **Delimitadores**: quitar `"..."`, `[...]` y backticks.
-- **Caracteres**: espacios y símbolos → `_`; acentos y ñ → ASCII; espacios invisibles (NBSP, BOM) → eliminar. El plugin borra en silencio una tabla o columna con caracteres fuera de `[A-Za-z0-9_]`, o con un NBSP antes o después de `Table`.
+- **Caracteres**: espacios y símbolos → `_`; acentos y ñ → ASCII; espacios invisibles (NBSP, BOM) → eliminar. El plugin borra en silencio una tabla o columna con caracteres fuera de `[A-Za-z0-9_]`. Hasta v0.1.21, también una tabla con un NBSP o un BOM antes de su declaración.
 - **Case canónico**: la forma del `CREATE TABLE` para la tabla y la de la definición para la columna. Toda referencia se empareja sin distinguir mayúsculas y se reescribe con esa forma. Ejemplo: `CREATE TABLE [dbo].[Cliente] ([IdCliente] ...)` + `REFERENCES dbo.cliente(idcliente)` → `ref: > Cliente.IdCliente`.
 - Mantener un mapa nombre original → nombre DBML y aplicarlo en tablas, columnas, refs y notas.
-- Nombres reservados en SQL (`order`, `user`, `group`) no dan problema ni en el plugin ni en dbdiagram.io.
-- Columna llamada `indexes` → `indexes_`. Tabla o columna llamada `pk` usada como destino de un ref → `pk_`. Avisarlo.
+- Nombres reservados en SQL (`order`, `user`, `group`), y columnas llamadas `indexes` o `pk`, no dan problema ni en el plugin desde v0.1.22 ni en dbdiagram.io.
 
 ## 9. Comentarios y notas
 
@@ -138,11 +137,11 @@ Aplicar en orden:
 Reglas del texto:
 
 - Comillas simples, una sola línea. Los saltos de línea se vuelven espacio.
-- Sin apóstrofes. En prosa, reformular. En expresiones SQL, cambiarlos por comillas dobles. Un apóstrofe trunca la nota y, en una nota de columna, el resto se lee como settings: `note: 'it's not null'` marca la columna `not null`.
-- Nunca delimitar con comillas dobles (`note: "..."`): el plugin no lo reconoce y lee el texto como settings.
-- Sin la secuencia `ref:` dentro de una nota de columna: crea una relación fantasma.
+- Sin apóstrofes. En prosa, reformular. En expresiones SQL, cambiarlos por comillas dobles. dbdiagram.io rechaza un apóstrofe sin escapar dentro de una cadena, y hasta v0.1.21 el plugin truncaba la nota y leía el resto como settings.
+- Delimitar siempre con comillas simples. Desde v0.1.22 el plugin y dbdiagram.io aceptan `note: "..."`, pero hasta v0.1.21 el plugin leía ese texto como settings.
+- Sin la secuencia `ref:` dentro de una nota de columna: hasta v0.1.21 creaba una relación fantasma.
 - La `Note:` de tabla es única y va al final del cuerpo. Orden: comentario de la tabla, luego degradaciones, separados por `. `.
-- El plugin v0.1.21 no muestra notas. Son útiles en dbdiagram.io y al leer el bloque.
+- El plugin (v0.2.0) no muestra notas. Son útiles en dbdiagram.io y al leer el bloque.
 
 ## 10. Herencia y particiones (PostgreSQL)
 

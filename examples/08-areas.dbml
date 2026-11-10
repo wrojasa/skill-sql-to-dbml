@@ -1,0 +1,42 @@
+Table cliente {
+  id integer [pk, not null]
+  nombre varchar(100) [not null]
+}
+
+Table pedido {
+  id integer [pk, not null]
+  cliente_id integer [not null, ref: > cliente.id]
+  fecha date [not null]
+}
+
+Table producto {
+  id integer [pk, not null]
+  nombre varchar(120) [not null]
+}
+
+Table bodega {
+  id integer [pk, not null]
+  ciudad varchar(60) [not null]
+}
+
+Table pedido_linea {
+  pedido_id integer [pk, not null, ref: > pedido.id]
+  producto_id integer [pk, not null, ref: > producto.id]
+  cantidad integer [not null]
+}
+
+Table auditoria {
+  id integer [pk, not null]
+  detalle text
+}
+
+TableGroup ventas [color: #20479e] {
+  cliente
+  pedido
+  pedido_linea
+}
+
+TableGroup inventario [color: #2e7d32] {
+  producto
+  bodega
+}

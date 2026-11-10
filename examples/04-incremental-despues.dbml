@@ -16,9 +16,15 @@ Table pedido {
   fecha date [not null]
 }
 
+TableGroup ventas [color: #2e7d32] {
+  cliente
+  pedido
+}
+
 Ref: pedido.vendedor_id > vendedor.id
 // @pos cliente 40 60
 // @pos pedido 380 40
 // @edge pedido cliente_id cliente id 300 120 300 90
+// @group ventas collapsed
 // @view 0 0 1.000
 // @size 900 520

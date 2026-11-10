@@ -8,7 +8,7 @@ description: >
   quiera verlo como diagrama, o diga "pásame el dbml de", "convierte este
   CREATE TABLE a dbml", "genera el dbml de estas tablas", "dbml para el
   plugin", "arma el ERD en dbml", "el diagrama de estas tablas", "agrega esta
-  tabla al dbml", "actualiza el dbml con". También en inglés: "convert this SQL
+  tabla al dbml", "actualiza el dbml con", "agrupa las tablas por áreas". También en inglés: "convert this SQL
   to DBML", "generate the DBML or ERD for these tables", "add this table to the
   dbml". Activar aunque no se diga literalmente "DBML", también para mantener al
   día un bloque dbml existente. No usar para convertir DBML a SQL ni para
@@ -23,8 +23,10 @@ Obsidian "DBML ER Diagrams" dibuja y que dbdiagram.io también acepta. Lo que
 queda fuera de ese subconjunto se degrada (§6). Nunca se emite sintaxis que
 alguno de los dos no entienda.
 
-**Verificada contra el plugin v0.1.21.** Si el plugin cambia su parser,
-actualizar primero `references/plugin-subset.md`.
+**Verificada contra el plugin v0.2.0.** Las reglas también producen bloques
+correctos en versiones anteriores; si el usuario tiene una, ver la última
+sección de `references/plugin-subset.md`. Si el plugin cambia su parser,
+actualizar primero ese archivo.
 
 ## Archivos de apoyo
 
@@ -42,10 +44,11 @@ actualizar primero `references/plugin-subset.md`.
 | `01-basico` | FK inline `not null`, PK con `not null` |
 | `02-cardinalidad` | FK nullable, autorrelación, 1:1 con `-`, comentario `--` a `note` |
 | `03-degradaciones` | esquema quitado, enum `CREATE TYPE`, PK compuesta, UNIQUE, DEFAULT, FK dentro de PK compuesta sigue con `>` |
-| `04-incremental` | bloque con estado del plugin (`-antes.dbml`), tabla nueva (`.sql`), resultado (`-despues.dbml`) |
+| `04-incremental` | bloque con estado del plugin y un área colapsada (`-antes.dbml`), tabla nueva (`.sql`), resultado (`-despues.dbml`) |
 | `05-sqlserver` | script de SSMS: corchetes, `IDENTITY`, `COLLATE`, PK y FK por `ALTER`, case distinto, columna computada, `MS_Description`, `ON DELETE CASCADE` |
 | `06-mysql` | backticks, `int(11) unsigned`, `ENUM` y `SET` inline, `COMMENT`, `UNIQUE KEY` sobre FK, `KEY`, `ENGINE` |
 | `07-postgres` | estilo pg_dump: `public.`, arrays, identidad, columna generada, alias de tipos, `ALTER TABLE ONLY`, `COMMENT ON`, particiones |
+| `08-areas` | el usuario pide agrupar por áreas: un `TableGroup` por esquema, con color, después de las tablas |
 
 ---
 
@@ -86,8 +89,16 @@ Table pedido {
   vendedor_id integer
 }
 
+TableGroup ventas [color: #2e7d32] {
+  cliente
+  pedido
+}
+
 Ref: pedido.vendedor_id > vendedor.id
 ```
+
+El bloque `TableGroup` solo aparece si el usuario pidió agrupar por áreas
+(§7) o si ya existía en el bloque (§8).
 
 Reglas de forma. Cada una evita una pérdida silenciosa en el plugin; el
 detalle está en `plugin-subset.md`.
@@ -97,19 +108,20 @@ detalle está en `plugin-subset.md`.
 - Una columna por línea: `nombre tipo [settings]`. El `]` se cierra en la misma línea y después no va nada: ni `,`, ni `;`, ni comentario.
 - Tipo en minúsculas, sin `[` ni `]`, sin espacios fuera de paréntesis (§3).
 - Settings permitidos, en este orden: `pk`, `not null`, `ref: > tabla.col` o `ref: - tabla.col`, `note: '...'`. Separados por `, `; `not null` con un solo espacio; `ref:` sin espacio antes de los dos puntos.
-- Toda columna `pk` lleva también `not null`. El plugin no lo deduce de `pk`.
+- Toda columna `pk` lleva también `not null`. Sin él no aparece el badge `NN`, y hasta v0.1.21 una PK que también es FK se dibujaba como opcional.
 - Notas: comillas simples, una línea, sin apóstrofes y sin la secuencia `ref:`.
 - `Note:` de tabla: una sola por tabla, como última línea del cuerpo.
 - `Ref:` a nivel raíz, fuera de las llaves de cualquier tabla, con la forma exacta `Ref: hija.col > padre.col`.
 - `headercolor`: solo `#rrggbb`. No se emite salvo que el usuario lo pida (§7).
-- Orden: tablas padre antes que sus hijas, después las líneas `Ref:` (§9).
+- `TableGroup` (área): solo por pedido del usuario o si ya existe, con las reglas de §7.
+- Orden: tablas padre antes que sus hijas, después los `TableGroup`, después las líneas `Ref:` (§9).
 
-**Nunca emitir:** `indexes { }`, bloques `enum`, `TableGroup`, `Project`,
-`Note { }` en bloque, notas con `'''`, comentarios `/* */`, refs
-multi-columna, settings `unique`, `default` o `increment`, settings en `Ref`
-(`[delete: ...]`), operadores `<` o `<>`, líneas `// @pos`, `// @edge`,
-`// @view`, `// @size`. Algunos son inofensivos para el plugin y otros borran
-tablas o crean columnas fantasma; `plugin-subset.md` los separa.
+**Nunca emitir:** `indexes { }`, bloques `enum`, `Project`, `Note { }` en
+bloque, notas con `'''`, comentarios `/* */`, refs multi-columna, settings
+`unique`, `default` o `increment`, settings en `Ref` (`[delete: ...]`),
+operadores `<` o `<>`, líneas `// @pos`, `// @edge`, `// @view`, `// @size`,
+`// @group`. Algunos son inofensivos para el plugin y otros borran tablas o
+crean columnas fantasma; `plugin-subset.md` los separa.
 
 ---
 
@@ -146,7 +158,7 @@ de la columna FK.
 
 - **FK siempre a la izquierda, con `>`**: `Ref: hija.fk > padre.pk`. Lado hija: pata de gallo. Lado padre: **barra** si la FK es `not null`, **círculo** si es nullable. Preservar siempre la nulabilidad original de la FK.
 - **1:1 con `-`** solo si el conjunto de columnas de la FK coincide exactamente con una PK, un UNIQUE o un índice único de la tabla hija. Una FK que es solo parte de una PK o UNIQUE compuesta sigue con `>`. Una tabla puente produce dos `>`.
-- **Nunca `<`**: el plugin pone el ícono 🔗 en la columna de la izquierda y la FK real queda sin ícono. **Nunca `<>`**: N:M se modela con la tabla puente.
+- **Nunca `<`**: con `>` la FK queda siempre a la izquierda y el bloque se lee igual en todas partes. Hasta v0.1.21, `<` además ponía el ícono 🔗 en la columna equivocada. Si el usuario eligió "One to many" en el canvas, el bloque trae `<`: respetarlo, no reescribirlo. **Nunca `<>`**: N:M se modela con la tabla puente.
 - **Inline o `Ref:`**: inline `[ref: ...]` cuando el SQL usa `REFERENCES` en la columna; línea `Ref:` para `FOREIGN KEY` de constraint o de `ALTER`. Cada relación se declara una sola vez: nunca inline y `Ref:` a la vez, ni dos operadores para el mismo par.
 - **Ambos extremos deben existir** en el bloque, con el mismo case. Si la tabla o columna destino no está en el lote, no emitir la relación: documentarla en la `Note:` de la tabla como `FK pendiente: col -> tabla.col` y avisarlo. El plugin descarta en silencio una relación con un extremo inexistente y dbdiagram.io rechaza el bloque entero.
 - FK multi-columna: ver §6.
@@ -155,18 +167,17 @@ de la columna FK.
 
 ## 5. Identificadores
 
-- **Esquema fuera**: `dbo.cliente`, `[dbo].[cliente]`, `ventas.pedido` → `cliente`, `pedido`. Si dos tablas chocan al quitarlo, usar `esquema_tabla` en ambas y avisarlo.
+- **Esquema fuera**: `dbo.cliente`, `[dbo].[cliente]`, `ventas.pedido` → `cliente`, `pedido`. Si dos tablas chocan al quitarlo, usar `esquema_tabla` en ambas y avisarlo. Si el usuario pide agrupar por áreas, el esquema original es el criterio por defecto (§7).
 - **Delimitadores fuera**: quitar `"..."`, `[...]` y backticks. Espacios y símbolos → `_`. Acentos y ñ → ASCII: `año` → `anio`. El plugin borra en silencio tablas o columnas con caracteres fuera de `[A-Za-z0-9_]`.
 - **Case canónico**: el nombre se escribe como aparece en su `CREATE TABLE` o en la definición de la columna. Las referencias (`REFERENCES`, `FOREIGN KEY`, `ALTER TABLE`) se emparejan sin distinguir mayúsculas y se reescriben con esa forma. SQL sin comillas no distingue case; el plugin y dbdiagram.io sí.
 - Usar el mismo mapa nombre original → nombre DBML para tablas, columnas y refs.
-- **Nombres que el plugin malinterpreta**: una columna llamada `indexes` se descarta, y una tabla o columna llamada `pk` usada como destino de un `ref` marca la FK como PK. Renombrarlas a `indexes_` o `pk_` y avisarlo.
 
 ---
 
 ## 6. Degradaciones
 
 Lo que el plugin no dibuja se omite y, si aporta información, se documenta en
-la `Note:` de la tabla. **El plugin v0.1.21 no muestra las notas**, ni de
+la `Note:` de la tabla. **El plugin (v0.2.0) no muestra las notas**, ni de
 tabla ni de columna. La nota queda en el texto del bloque y se ve en
 dbdiagram.io. No decirle al usuario que la verá en el diagrama de Obsidian.
 
@@ -202,22 +213,34 @@ usuario indiquen. Activar únicamente si el usuario lo pide:
 | "ponle PK surrogate" | a cada tabla sin PK, primera columna `id integer [pk, not null]`, o el tipo de PK más usado en el lote |
 | "agrega auditoría" | al final de cada tabla: `created_at timestamp [not null]`, `updated_at timestamp`, `created_by_id integer`, `updated_by_id integer`, `is_active boolean [not null]`. Sin `ref`, salvo que el usuario diga cuál es la tabla de usuarios. |
 | "nombra las FK" | renombrar cada FK a `<tabla_padre>_id` y reescribir sus refs |
-| "colorea por módulo" | `[headercolor: #rrggbb]` por esquema o prefijo, y una leyenda color ↔ módulo en la respuesta |
+| "colorea por módulo" | `[headercolor: #rrggbb]` por esquema o prefijo, y una leyenda color ↔ módulo en la respuesta. Si también pidió áreas, usar el color de cada área. |
+| "agrupa por áreas", "por esquema", "por módulo" | un `TableGroup` por grupo, con las reglas de abajo |
 
-Paleta sugerida para módulos: `#20479e`, `#2e7d32`, `#c62828`, `#6a1b9a`,
-`#ef6c00`, `#00838f`. Decir siempre en la respuesta qué se agregó o renombró.
+Paleta sugerida para módulos y áreas: `#20479e`, `#2e7d32`, `#c62828`,
+`#6a1b9a`, `#ef6c00`, `#00838f`. Decir siempre en la respuesta qué se agregó o
+renombró.
+
+Reglas de las áreas (`TableGroup`), verificadas contra el plugin y contra el
+parser de dbdiagram.io:
+
+- **Criterio**: el que indique el usuario. Si no indica ninguno, el esquema original cuando el script trae más de uno; si no, el prefijo común del nombre (`ven_`, `inv_`). Si no hay un criterio claro, proponer la agrupación en la respuesta y pedir confirmación antes de emitirla.
+- **Forma**: `TableGroup nombre [color: #rrggbb] {`, una tabla por línea, `}`. Nombre con `[A-Za-z0-9_]+`, único en el bloque. Un color de la paleta por área.
+- **Miembros**: solo tablas que existen en el bloque, y cada tabla en una sola área. dbdiagram.io rechaza el bloque entero si un miembro no existe o se repite. Las tablas que no encajan en ningún grupo quedan sueltas.
+- **Ubicación**: los bloques `TableGroup` van después de todas las tablas y antes de las líneas `Ref:`. En v0.1.22 y anteriores, una línea de miembro escrita antes de su tabla confundía el renombrado desde el canvas.
+- **Versiones**: el plugin dibuja áreas desde v0.2.0. En versiones anteriores las ignora sin dañar el diagrama.
 
 ---
 
 ## 8. Modo incremental
 
 El bloque existente es la fuente de verdad: el usuario pudo cambiarlo desde el
-canvas, renombrando, coloreando o cambiando cardinalidades. Leerlo completo
-antes de editar.
+canvas, renombrando, coloreando, cambiando cardinalidades, moviendo o
+colapsando áreas. Leerlo completo antes de editar.
 
-- **No tocar el estado del plugin**: ninguna línea `// @pos`, `// @edge`, `// @view`, `// @size` ni `// height:`, y ningún `headercolor` existente, tenga el formato que tenga.
+- **No tocar el estado del plugin**: ninguna línea `// @pos`, `// @edge`, `// @view`, `// @size`, `// @group` ni `// height:`, y ningún `headercolor` existente, tenga el formato que tenga.
+- **Áreas existentes**: conservar cada `TableGroup` tal cual, aunque el usuario no haya pedido áreas en esta conversación. Una tabla nueva entra a un área solo si el usuario lo pide: agregar su nombre como línea de miembro en ese `TableGroup`. Si el usuario pide renombrar o borrar una tabla, actualizar también su línea de miembro. Un área nueva va después de las tablas.
 - **No reordenar ni reescribir** tablas o relaciones existentes. Si el usuario pide cambiar una tabla, tocar solo las líneas pedidas y fusionar los datos nuevos en su `Note:` existente.
-- **Dónde va una tabla nueva**: antes de la primera tabla existente que la referencia; si ninguna la referencia, después de la última tabla. Así los padres quedan antes que las hijas. En v0.1.21, renombrar o borrar una tabla desde el canvas ataca la primera línea que empiece con su nombre; con la tabla hija antes, renombrar `vendedor` modificaría la columna `vendedor_id`.
+- **Dónde va una tabla nueva**: antes de la primera tabla existente que la referencia; si ninguna la referencia, después de la última tabla. Así los padres quedan antes que las hijas, el bloque se lee mejor y se evita un bug de v0.1.21 y anteriores: renombrar o borrar una tabla desde el canvas atacaba la primera línea que empezara con su nombre, así que con la hija antes, renombrar `vendedor` modificaba la columna `vendedor_id`.
 - **Relaciones nuevas**: inline en la tabla nueva, o una línea `Ref:` nueva después de las existentes, nunca dentro de un cuerpo de tabla.
 - **FK pendientes**: si la tabla nueva resuelve un `FK pendiente` de una Note, agregar la relación y quitar ese ítem de la Note. Si era el único, quitar la línea `Note:`.
 - El plugin reescribe las líneas `// @` al final del bloque cada vez que guarda el layout, así que su posición relativa da igual. Lo único prohibido es borrarlas o cambiarlas.
@@ -229,9 +252,9 @@ antes de editar.
 ## 9. Formato de entrega
 
 - Salida principal: un bloque ```` ```dbml ```` listo para pegar. Va a nivel raíz de la nota: dentro de un callout `> [!note]` o de un ítem de lista el plugin dibuja, pero no guarda posiciones ni permite editar.
-- Orden: tablas padre antes que hijas, en orden topológico; en ciclos, el orden del script. Después, las líneas `Ref:`.
+- Orden: tablas padre antes que hijas, en orden topológico; en ciclos, el orden del script. Después, los bloques `TableGroup`, si los hay. Al final, las líneas `Ref:`.
 - Si piden archivo: `<nombre>.dbml`, UTF-8 sin BOM, sin fences. Aclarar que Obsidian no dibuja archivos `.dbml` sueltos: el archivo sirve para dbdiagram.io o `@dbml/cli`; en Obsidian el contenido va dentro de un bloque en una nota `.md`.
-- Después del bloque, una línea breve con lo interpretado: degradaciones, FK pendientes, nombres cambiados, convenciones aplicadas.
+- Después del bloque, una línea breve con lo interpretado: degradaciones, FK pendientes, nombres cambiados, convenciones aplicadas, áreas creadas y su criterio.
 
 ---
 
@@ -248,4 +271,5 @@ antes de editar.
 9. Nada de la lista "Nunca emitir" de §2.
 10. Cada degradación con información útil quedó en una Note y la respuesta la resume.
 11. Tablas padre antes que hijas.
-12. Incremental: líneas `// @` y `// height:` intactas, `headercolor` previos intactos, tablas existentes en su orden.
+12. Incremental: líneas `// @` (incluida `// @group`) y `// height:` intactas, `headercolor` y `TableGroup` previos intactos, tablas existentes en su orden.
+13. Áreas: solo si el usuario las pidió o ya existían; nombres únicos; cada tabla en una sola área; solo tablas que existen; bloques `TableGroup` después de las tablas y antes de los `Ref:`.
