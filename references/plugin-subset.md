@@ -1,11 +1,14 @@
-# Subset DBML del plugin "DBML ER Diagrams"
+# Subset DBML de "DBML ER Diagrams" (plugin de Obsidian y extensión de VS Code)
 
-Qué entiende, qué ignora y qué pierde en silencio el parser del plugin.
-**Verificado contra v0.2.0** ejecutando `src/parser.ts` real sobre cada caso.
-El plugin nunca muestra errores por construcciones desconocidas: las descarta.
-Por eso un error de forma no avisa, simplemente falta algo en el diagrama.
+Qué entiende, qué ignora y qué pierde en silencio el parser. **Verificado
+contra el plugin v0.2.0** ejecutando `src/parser.ts` real sobre cada caso; el
+plugin v0.3.0 y la extensión de VS Code 0.1.0 (`vscode-dbml-erd`) usan el
+mismo parser sin cambios. Todo lo que sigue aplica a las dos herramientas
+salvo donde se indique "solo Obsidian" o "solo VS Code". Ninguna muestra
+errores por construcciones desconocidas: las descartan. Por eso un error de
+forma no avisa, simplemente falta algo en el diagrama.
 
-Si el usuario tiene una versión anterior, ver la última sección.
+Si el usuario tiene una versión anterior del plugin, ver la última sección.
 
 ## Lo que dibuja
 
@@ -74,7 +77,7 @@ Dibujo:
 
 ## Lo que parsea pero no muestra
 
-- **Notas** de tabla (`Note:`), de columna (`note:`) y de área. v0.2.0 no las dibuja, ni como texto ni como tooltip. Si una tabla tiene varias `Note:`, el parser guarda la última.
+- **Notas** de tabla (`Note:`), de columna (`note:`) y de área. Ni el plugin v0.3.0 ni la extensión las dibujan, ni como texto ni como tooltip. Si una tabla tiene varias `Note:`, el parser guarda la última.
 
 ## Lo que ignora sin daño
 
@@ -107,45 +110,63 @@ Dibujo:
 ## Edición desde el canvas
 
 El usuario puede cambiar el bloque desde el diagrama. En modo incremental,
-el bloque que llega ya puede traer estos cambios:
+el bloque que llega ya puede traer estos cambios (plugin v0.3.0 y extensión):
 
-- **Renombrar tabla**: cambia la declaración, las referencias `tabla.col`, sus líneas `@pos` y `@edge`, y su línea de miembro en el área.
-- **Borrar tabla**: quita la declaración, sus `@pos` y `@edge`, las relaciones sueltas que la mencionan en cualquier forma, los `ref:` inline de otras tablas que apuntan a ella (la columna queda), los bloques `Ref { }` que se quedan vacíos y su línea de miembro. El área queda aunque se vacíe.
+- **Renombrar tabla**: cambia la declaración, las referencias `tabla.col`, sus líneas `@pos`, `@edge` y `@table`, y su línea de miembro en el área.
+- **Borrar tabla**: quita la declaración, sus `@pos`, `@edge` y `@table`, las relaciones sueltas que la mencionan en cualquier forma, los `ref:` inline de otras tablas que apuntan a ella (la columna queda), los bloques `Ref { }` que se quedan vacíos y su línea de miembro. Si era la última tabla del área, el área y su línea `@group` también se borran (desde v0.3.0; en v0.2.0 el área vacía quedaba en el texto).
+- **Nueva tabla** (botón de la barra, o "Nueva tabla en esta área" en el menú del área): `Table <nombre> {` con una columna `id integer [pk, not null]`, al final del bloque; dentro de un área agrega su línea de miembro.
 - **Renombrar columna** y **cambiar tipo**.
 - **Cambiar cardinalidad**: reescribe todas las declaraciones de esa relación, inline y sueltas. La opción "One to many" escribe `<`.
 - **Color de tabla**: escribe `[headercolor: #rrggbb]` en la declaración.
+- **Áreas desde su menú**: renombrar (encabezado, `@group` y nada más), elegir o quitar color (`[color: #rrggbb]`), crear tabla dentro, quitar el área (borra el bloque `TableGroup` y su `@group`; las tablas quedan).
+- **Mover tabla entre áreas** ("Mover a área…", "Nueva área…", "Quitar de «área»"): cambia las líneas de miembro; un área nueva se escribe después de las tablas con el primer color libre de la paleta.
 - **Mover un área** por su barra, o por su recuadro si está colapsada: mueve todas sus tablas y escribe sus `@pos`.
 - **Colapsar o expandir un área**: escribe o borra `// @group <área> collapsed`.
+- **Colapsar o expandir una tabla** (solo VS Code): escribe o borra `// @table <tabla> collapsed`. El plugin conserva la línea como comentario y dibuja la tabla expandida.
 
-Desde el canvas no se pueden crear tablas ni áreas, ni renombrar, recolorear o borrar un área, ni cambiar sus miembros. Arrastrar una tabla fuera de su área no la saca del área.
+Crear tablas y áreas, moverlas entre áreas y quitar áreas escriben además el `@pos` de todas las tablas en la misma edición, para que nada salte al recalcular el layout. Desde el canvas no se pueden agregar ni borrar columnas, crear relaciones ni editar notas. Arrastrar una tabla fuera de su área no la saca del área.
 
-## Estado que el plugin guarda en el bloque
+## Estado que el diagrama guarda en el bloque
 
-El plugin escribe estas líneas de comentario dentro del propio bloque. No se
-escriben a mano y nunca se borran ni se modifican:
+El plugin y la extensión escriben estas líneas de comentario dentro del
+propio bloque (en VS Code, al final del archivo `.dbml` o del bloque). No se
+escriben a mano y nunca se borran ni se modifican; cada herramienta conserva
+las líneas que escribió la otra:
 
 - `// @pos <tabla> <x> <y>`: posición de cada tabla que el usuario movió. Las demás se ubican solas.
 - `// @edge <tabla> <col> <tabla> <col> <x1> <y1> ...`: ruta editada a mano de una relación.
 - `// @group <área> collapsed`: área colapsada. Sin la línea, el área está expandida.
+- `// @table <tabla> collapsed`: tabla colapsada a su encabezado. La escribe solo VS Code; Obsidian la conserva y dibuja la tabla expandida.
 - `// @view <x> <y> <zoom>`: desplazamiento y zoom.
-- `// @size <ancho> <alto>`: tamaño del canvas, solo si el usuario lo redimensionó.
-- `// height: <n>` o `// canvas-height: <n>`: altura inicial, solo de lectura.
+- `// @size <ancho> <alto>`: tamaño del canvas, solo si el usuario lo redimensionó en Obsidian. VS Code nunca la escribe (el lienzo llena el panel) y la conserva si existe.
+- `// height: <n>` o `// canvas-height: <n>`: altura inicial, solo de lectura y solo Obsidian.
 - `[headercolor: #rrggbb]` en la declaración, puesto desde el selector de color.
 
 Cada vez que guarda el layout (mover, desplazar, zoom, redimensionar, editar
-una ruta, colapsar), el plugin quita las líneas `// @` del cuerpo y las vuelve
-a escribir al final del bloque.
+una ruta, colapsar), quita las líneas `// @` del cuerpo y las vuelve a
+escribir al final del bloque. En VS Code cada escritura es una edición normal
+del documento: el archivo queda sucio hasta que el usuario guarda y se puede
+deshacer con Ctrl+Z.
 
-## Requisitos de la nota de Obsidian
+## Dónde debe estar el bloque
 
-- El bloque ```` ```dbml ```` debe ir a nivel raíz. Dentro de un callout (`> `) o de un ítem de lista se dibuja, pero no se guardan posiciones ni funciona la edición.
+**Obsidian (plugin)**
+
+- El bloque ```` ```dbml ```` debe ir a nivel raíz de una nota `.md`. Dentro de un callout (`> `) o de un ítem de lista se dibuja, pero no se guardan posiciones ni funciona la edición.
 - Un archivo `.dbml` suelto no se dibuja: el plugin solo procesa bloques de código en notas.
 
-## Limitaciones conocidas de v0.2.0
+**VS Code (extensión `vscode-dbml-erd`)**
 
-- Las tablas nuevas se ubican con el layout automático aunque otras tengan `@pos`, así que pueden quedar encima de una tabla fijada.
+- Un archivo `.dbml`: todo el archivo es el bloque, sin cercas. Se abre con el icono de diagrama en la barra de título del editor, con el comando "DBML ERD: Open ER Diagram to the Side", o como editor principal con *Open With… → DBML ER Diagram*.
+- Un bloque ```` ```dbml ```` (o `~~~dbml`) en un `.md`: la cerca abre la línea (sangría permitida, no dentro de `> `). Con el cursor dentro del bloque, el mismo comando abre su panel; cada bloque tiene su propio panel, que sigue al bloque si se insertan líneas arriba.
+- El diagrama se actualiza mientras se escribe; con el texto a medias (una `{` sin cerrar) conserva el último diagrama válido y avisa.
+
+## Limitaciones conocidas (plugin v0.3.0 y extensión 0.1.0)
+
+- Las tablas agregadas en el texto se ubican con el layout automático aunque otras tengan `@pos`, así que pueden quedar encima de una tabla fijada. Las creadas desde el canvas sí fijan todas las posiciones.
 - Las notas no se dibujan.
-- Las áreas solo se crean y editan en el texto.
+- Columnas y relaciones nuevas solo se crean en el texto.
+- Colapsar tablas existe solo en VS Code.
 
 ## Versiones anteriores
 
@@ -154,6 +175,10 @@ anteriores: PK con `not null`, tablas padre antes que hijas, solo `>` y `-`,
 notas con comillas simples sin apóstrofes ni `ref:`, áreas después de las
 tablas y sin bloques fuera del subset. Si el usuario reporta alguno de estos
 síntomas, probablemente tiene una versión anterior y conviene que actualice.
+
+Hasta v0.2.0:
+
+- **Sin edición de áreas desde el canvas**: no se crean tablas ni áreas, ni se renombran, recoloran o quitan áreas, ni se mueven tablas entre áreas. Borrar la última tabla de un área deja el `TableGroup` vacío en el texto.
 
 Hasta v0.1.22:
 

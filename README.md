@@ -2,15 +2,22 @@
 
 Skill de Claude que convierte scripts **SQL `CREATE TABLE`** —ANSI, SQL Server,
 PostgreSQL o MySQL— o tablas que vas definiendo en código **DBML** compatible con
-el plugin de Obsidian [**DBML ER Diagrams**](https://github.com/wrojasa/obsidian-dbml-erd).
+**DBML ER Diagrams**, en sus dos formas:
 
-El DBML generado se ciñe al subconjunto que ese plugin renderiza y que
-[dbdiagram.io](https://dbdiagram.io) también acepta. Lo que el plugin no dibuja
+- el plugin de Obsidian [obsidian-dbml-erd](https://github.com/wrojasa/obsidian-dbml-erd): bloques ```` ```dbml ```` en notas;
+- la extensión de VS Code [vscode-dbml-erd](https://github.com/wrojasa/vscode-dbml-erd) ([Marketplace](https://marketplace.visualstudio.com/items?itemName=wrojasa.vscode-dbml-erd)): archivos `.dbml` y bloques ```` ```dbml ```` en Markdown.
+
+Las dos usan el mismo parser y las mismas anotaciones de layout, así que el
+mismo bloque se dibuja igual en ambas y puede moverse entre ellas.
+
+El DBML generado se ciñe al subconjunto que ese parser renderiza y que
+[dbdiagram.io](https://dbdiagram.io) también acepta. Lo que el diagrama no dibuja
 (PK compuesta, FK multi-columna, enums, defaults, unique) se degrada a una forma
 equivalente del subconjunto y se documenta en una nota, de modo que el bloque
 **siempre renderiza**.
 
-**Compatibilidad:** verificada contra DBML ER Diagrams **v0.2.0**. Los bloques
+**Compatibilidad:** plugin de Obsidian **v0.3.0** y extensión de VS Code
+**0.1.0** (parser verificado en v0.2.0, sin cambios desde entonces). Los bloques
 que genera también funcionan en versiones anteriores del plugin.
 
 ## Qué hace
@@ -19,12 +26,13 @@ que genera también funcionan en versiones anteriores del plugin.
 - Normaliza scripts reales: corchetes y `IDENTITY` de SSMS, backticks y `int(11) unsigned` de MySQL, esquemas, arrays y alias de tipos de PostgreSQL, diferencias de mayúsculas entre tablas y referencias.
 - Detecta PK, NOT NULL y FKs. Toda PK sale con `not null`, y cada FK conserva su nulabilidad, que es lo que decide la marca obligatorio u opcional en el diagrama.
 - Orienta las relaciones como el plugin las espera (`hija.fk > padre.pk`) y usa `-` solo para un 1:1 real.
-- Modo incremental: agrega tablas a un bloque existente **sin tocar** el estado que guarda el plugin (`// @pos`, `// @edge`, `// @view`, `// @size`, `// @group`), los colores que ya pusiste ni tus áreas.
-- Áreas de trabajo: si se lo pides ("agrupa por áreas", "por esquema" o "por módulo"), agrupa las tablas en bloques `TableGroup` con color, que el plugin dibuja como áreas desde v0.2.0.
+- Modo incremental: agrega tablas a un bloque o archivo existente **sin tocar** el estado que guarda el diagrama (`// @pos`, `// @edge`, `// @view`, `// @size`, `// @group`, `// @table`), los colores que ya pusiste ni tus áreas.
+- Áreas de trabajo: si se lo pides ("agrupa por áreas", "por esquema" o "por módulo"), agrupa las tablas en bloques `TableGroup` con color, que ambas herramientas dibujan como áreas.
+- Entrega según la herramienta: bloque para una nota de Obsidian, archivo `.dbml` o bloque en Markdown para VS Code. Si no dices cuál, el bloque sirve en las dos.
 - Convenciones (PK surrogate, columnas de auditoría, nombres de FK, color por módulo): **opcionales**, solo si las pides.
 
-El plugin (v0.2.0) no muestra las notas en el diagrama. Las degradaciones quedan
-en el texto del bloque y se ven en dbdiagram.io.
+Ni el plugin ni la extensión muestran las notas en el diagrama. Las
+degradaciones quedan en el texto y se ven en dbdiagram.io.
 
 ## Instalación
 
@@ -84,6 +92,7 @@ Ejemplos de cómo pedirlo:
 
 - "Pásame el dbml de este script" + pegar los `CREATE TABLE`.
 - "Convierte estas tablas a dbml para el plugin."
+- "Genera el archivo .dbml de este esquema para VS Code."
 - "Agrega esta tabla al dbml" + pegar el bloque actual (modo incremental).
 - "Genera el dbml y aplica mis convenciones" (PK surrogate + auditoría + nombres de FK).
 - "Pásame el dbml y agrupa por áreas" (un área por esquema, o por el criterio que indiques).
@@ -121,21 +130,25 @@ Table employee {
 }
 ```
 
-Pega el bloque en una nota a nivel raíz, no dentro de un callout ni de una
-lista: ahí el plugin dibuja, pero no guarda posiciones ni permite editar.
+En Obsidian, pega el bloque en una nota a nivel raíz, no dentro de un callout
+ni de una lista: ahí el plugin dibuja, pero no guarda posiciones ni permite
+editar. En VS Code, guarda el contenido (sin las cercas) como `.dbml` y ábrelo
+con el icono de diagrama de la barra de título, o pega el bloque en un `.md` y
+usa el comando "DBML ERD: Open ER Diagram to the Side" con el cursor dentro.
 
 ## Alcance
 
 - Entrada: ANSI y los dialectos de SQL Server, PostgreSQL y MySQL. Se ignora el ruido de despliegue (`GO`, `USE`, `SET`, `ON [PRIMARY]`, `ENGINE=`).
-- Salida: **solo el subset** que renderiza el plugin DBML ER Diagrams y acepta dbdiagram.io.
+- Salida: **solo el subset** que renderiza DBML ER Diagrams (Obsidian y VS Code) y acepta dbdiagram.io.
 - No inventa columnas ni convenciones por defecto; transcribe lo que indiques.
 - No convierte DBML a SQL ni diseña modelos de datos desde cero.
 
 ## Mantenimiento
 
-`references/plugin-subset.md` describe el parser del plugin en la versión
-indicada arriba. Cuando el plugin cambie su parser o el estado que guarda en el
-bloque, actualiza ese archivo y la versión en `SKILL.md` y en este README.
+`references/plugin-subset.md` describe el parser y el estado que guardan el
+plugin y la extensión en las versiones indicadas arriba. Cuando cualquiera de
+los dos cambie su parser o sus anotaciones, actualiza ese archivo y las
+versiones en `SKILL.md` y en este README.
 
 ## Licencia
 

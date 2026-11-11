@@ -2,31 +2,37 @@
 name: sql-to-dbml
 description: >
   Convierte scripts SQL CREATE TABLE (ANSI, SQL Server, PostgreSQL o MySQL) o
-  tablas que se van definiendo en código DBML que renderiza en el plugin de
-  Obsidian "DBML ER Diagrams" y en dbdiagram.io. Usar SIEMPRE que el usuario
-  pida generar o convertir DBML, comparta un script de creación de tablas y
-  quiera verlo como diagrama, o diga "pásame el dbml de", "convierte este
-  CREATE TABLE a dbml", "genera el dbml de estas tablas", "dbml para el
-  plugin", "arma el ERD en dbml", "el diagrama de estas tablas", "agrega esta
-  tabla al dbml", "actualiza el dbml con", "agrupa las tablas por áreas". También en inglés: "convert this SQL
-  to DBML", "generate the DBML or ERD for these tables", "add this table to the
-  dbml". Activar aunque no se diga literalmente "DBML", también para mantener al
-  día un bloque dbml existente. No usar para convertir DBML a SQL ni para
-  diseñar un modelo de datos desde cero.
+  tablas que se van definiendo en código DBML que renderiza "DBML ER Diagrams"
+  (plugin de Obsidian y extensión de VS Code, mismo parser) y dbdiagram.io.
+  Usar SIEMPRE que el usuario pida generar o convertir DBML, comparta un script
+  de creación de tablas y quiera verlo como diagrama, o diga "pásame el dbml
+  de", "convierte este CREATE TABLE a dbml", "genera el dbml de estas tablas",
+  "dbml para el plugin", "dbml para vscode", "crea el archivo .dbml", "arma el
+  ERD en dbml", "el diagrama de estas tablas", "agrega esta tabla al dbml",
+  "actualiza el dbml con", "agrupa las tablas por áreas". También en inglés:
+  "convert this SQL to DBML", "generate the DBML or ERD for these tables", "add
+  this table to the dbml". Activar aunque no se diga literalmente "DBML",
+  también para mantener al día un bloque o archivo dbml existente. No usar para
+  convertir DBML a SQL ni para diseñar un modelo de datos desde cero.
 ---
 
-# SQL → DBML para el plugin DBML ER Diagrams
+# SQL → DBML para DBML ER Diagrams (Obsidian y VS Code)
 
 Genera DBML a partir de SQL `CREATE TABLE` o de tablas descritas en la
-conversación. La salida se limita al subconjunto de DBML que el plugin de
-Obsidian "DBML ER Diagrams" dibuja y que dbdiagram.io también acepta. Lo que
-queda fuera de ese subconjunto se degrada (§6). Nunca se emite sintaxis que
-alguno de los dos no entienda.
+conversación. La salida se limita al subconjunto de DBML que dibuja "DBML ER
+Diagrams" y que dbdiagram.io también acepta. "DBML ER Diagrams" existe en dos
+formas con el mismo parser y las mismas anotaciones de layout: el plugin de
+Obsidian (bloques ```` ```dbml ```` en notas) y la extensión de VS Code
+(archivos `.dbml` y bloques ```` ```dbml ```` en Markdown). Un mismo bloque
+se dibuja igual en ambas y puede moverse entre ellas. Lo que queda fuera del
+subconjunto se degrada (§6). Nunca se emite sintaxis que alguna de las tres
+herramientas no entienda.
 
-**Verificada contra el plugin v0.2.0.** Las reglas también producen bloques
-correctos en versiones anteriores; si el usuario tiene una, ver la última
-sección de `references/plugin-subset.md`. Si el plugin cambia su parser,
-actualizar primero ese archivo.
+**Parser verificado en el plugin v0.2.0; sin cambios en el plugin v0.3.0 ni
+en la extensión de VS Code 0.1.0**, que usa el mismo código. Las reglas
+también producen bloques correctos en versiones anteriores; si el usuario
+tiene una, ver la última sección de `references/plugin-subset.md`. Si el
+parser cambia, actualizar primero ese archivo.
 
 ## Archivos de apoyo
 
@@ -34,9 +40,10 @@ actualizar primero ese archivo.
   que el script traiga algo más que `CREATE TABLE` simples: `ALTER TABLE`,
   scripts de SSMS, MySQL o PostgreSQL, tipos raros, comentarios, enums,
   columnas computadas, herencia o particiones.
-- `references/plugin-subset.md`: qué dibuja el plugin, qué ignora, qué pierde
-  en silencio y qué estado guarda dentro del bloque. Leerlo en modo
-  incremental o cuando el usuario diga que algo no aparece en el diagrama.
+- `references/plugin-subset.md`: qué dibujan el plugin y la extensión, qué
+  ignoran, qué pierden en silencio, qué estado guardan dentro del bloque y
+  dónde debe estar el bloque en cada herramienta. Leerlo en modo incremental o
+  cuando el usuario diga que algo no aparece en el diagrama.
 - `examples/`: pares `.sql` → `.dbml`.
 
 | Ejemplo | Qué muestra |
@@ -44,7 +51,7 @@ actualizar primero ese archivo.
 | `01-basico` | FK inline `not null`, PK con `not null` |
 | `02-cardinalidad` | FK nullable, autorrelación, 1:1 con `-`, comentario `--` a `note` |
 | `03-degradaciones` | esquema quitado, enum `CREATE TYPE`, PK compuesta, UNIQUE, DEFAULT, FK dentro de PK compuesta sigue con `>` |
-| `04-incremental` | bloque con estado del plugin y un área colapsada (`-antes.dbml`), tabla nueva (`.sql`), resultado (`-despues.dbml`) |
+| `04-incremental` | bloque con estado del plugin y de la extensión (`@pos`, `@edge`, `@group`, `@table`, `@view`, `@size`) y un área colapsada (`-antes.dbml`), tabla nueva (`.sql`), resultado (`-despues.dbml`) |
 | `05-sqlserver` | script de SSMS: corchetes, `IDENTITY`, `COLLATE`, PK y FK por `ALTER`, case distinto, columna computada, `MS_Description`, `ON DELETE CASCADE` |
 | `06-mysql` | backticks, `int(11) unsigned`, `ENUM` y `SET` inline, `COMMENT`, `UNIQUE KEY` sobre FK, `KEY`, `ENGINE` |
 | `07-postgres` | estilo pg_dump: `public.`, arrays, identidad, columna generada, alias de tipos, `ALTER TABLE ONLY`, `COMMENT ON`, particiones |
@@ -120,7 +127,7 @@ detalle está en `plugin-subset.md`.
 bloque, notas con `'''`, comentarios `/* */`, refs multi-columna, settings
 `unique`, `default` o `increment`, settings en `Ref` (`[delete: ...]`),
 operadores `<` o `<>`, líneas `// @pos`, `// @edge`, `// @view`, `// @size`,
-`// @group`. Algunos son inofensivos para el plugin y otros borran tablas o
+`// @group`, `// @table`. Algunos son inofensivos y otros borran tablas o
 crean columnas fantasma; `plugin-subset.md` los separa.
 
 ---
@@ -176,10 +183,11 @@ de la columna FK.
 
 ## 6. Degradaciones
 
-Lo que el plugin no dibuja se omite y, si aporta información, se documenta en
-la `Note:` de la tabla. **El plugin (v0.2.0) no muestra las notas**, ni de
-tabla ni de columna. La nota queda en el texto del bloque y se ve en
-dbdiagram.io. No decirle al usuario que la verá en el diagrama de Obsidian.
+Lo que el diagrama no dibuja se omite y, si aporta información, se documenta
+en la `Note:` de la tabla. **Ni el plugin (v0.3.0) ni la extensión de VS Code
+(0.1.0) muestran las notas**, ni de tabla ni de columna. La nota queda en el
+texto y se ve en dbdiagram.io. No decirle al usuario que la verá en el
+diagrama de Obsidian o de VS Code.
 
 | SQL | Salida |
 | --- | --- |
@@ -227,23 +235,25 @@ parser de dbdiagram.io:
 - **Forma**: `TableGroup nombre [color: #rrggbb] {`, una tabla por línea, `}`. Nombre con `[A-Za-z0-9_]+`, único en el bloque. Un color de la paleta por área.
 - **Miembros**: solo tablas que existen en el bloque, y cada tabla en una sola área. dbdiagram.io rechaza el bloque entero si un miembro no existe o se repite. Las tablas que no encajan en ningún grupo quedan sueltas.
 - **Ubicación**: los bloques `TableGroup` van después de todas las tablas y antes de las líneas `Ref:`. En v0.1.22 y anteriores, una línea de miembro escrita antes de su tabla confundía el renombrado desde el canvas.
-- **Versiones**: el plugin dibuja áreas desde v0.2.0. En versiones anteriores las ignora sin dañar el diagrama.
+- **Versiones**: el plugin dibuja áreas desde v0.2.0 y la extensión de VS Code desde su 0.1.0. Versiones anteriores del plugin las ignoran sin dañar el diagrama.
 
 ---
 
 ## 8. Modo incremental
 
 El bloque existente es la fuente de verdad: el usuario pudo cambiarlo desde el
-canvas, renombrando, coloreando, cambiando cardinalidades, moviendo o
-colapsando áreas. Leerlo completo antes de editar.
+canvas, renombrando, coloreando, cambiando cardinalidades, creando tablas y
+áreas, moviendo tablas entre áreas o colapsando áreas y tablas. Leerlo
+completo antes de editar. En VS Code el bloque puede ser un archivo `.dbml`
+entero, sin cercas: las mismas reglas aplican al archivo completo.
 
-- **No tocar el estado del plugin**: ninguna línea `// @pos`, `// @edge`, `// @view`, `// @size`, `// @group` ni `// height:`, y ningún `headercolor` existente, tenga el formato que tenga.
+- **No tocar el estado del diagrama**: ninguna línea `// @pos`, `// @edge`, `// @view`, `// @size`, `// @group`, `// @table` ni `// height:`, y ningún `headercolor` existente, tenga el formato que tenga. Da igual qué herramienta las escribió: cada una conserva las de la otra.
 - **Áreas existentes**: conservar cada `TableGroup` tal cual, aunque el usuario no haya pedido áreas en esta conversación. Una tabla nueva entra a un área solo si el usuario lo pide: agregar su nombre como línea de miembro en ese `TableGroup`. Si el usuario pide renombrar o borrar una tabla, actualizar también su línea de miembro. Un área nueva va después de las tablas.
 - **No reordenar ni reescribir** tablas o relaciones existentes. Si el usuario pide cambiar una tabla, tocar solo las líneas pedidas y fusionar los datos nuevos en su `Note:` existente.
 - **Dónde va una tabla nueva**: antes de la primera tabla existente que la referencia; si ninguna la referencia, después de la última tabla. Así los padres quedan antes que las hijas, el bloque se lee mejor y se evita un bug de v0.1.21 y anteriores: renombrar o borrar una tabla desde el canvas atacaba la primera línea que empezara con su nombre, así que con la hija antes, renombrar `vendedor` modificaba la columna `vendedor_id`.
 - **Relaciones nuevas**: inline en la tabla nueva, o una línea `Ref:` nueva después de las existentes, nunca dentro de un cuerpo de tabla.
 - **FK pendientes**: si la tabla nueva resuelve un `FK pendiente` de una Note, agregar la relación y quitar ese ítem de la Note. Si era el único, quitar la línea `Note:`.
-- El plugin reescribe las líneas `// @` al final del bloque cada vez que guarda el layout, así que su posición relativa da igual. Lo único prohibido es borrarlas o cambiarlas.
+- El plugin y la extensión reescriben las líneas `// @` al final del bloque cada vez que guardan el layout, así que su posición relativa da igual. Lo único prohibido es borrarlas o cambiarlas.
 - Las tablas nuevas se ubican solas y pueden quedar encima de tablas que el usuario fijó. Avisarlo para que las mueva.
 - **Regenerar todo** solo con confirmación. Si se regenera, conservar al final las líneas `// @` existentes: las posiciones de tablas que mantienen su nombre se respetan.
 
@@ -251,9 +261,12 @@ colapsando áreas. Leerlo completo antes de editar.
 
 ## 9. Formato de entrega
 
-- Salida principal: un bloque ```` ```dbml ```` listo para pegar. Va a nivel raíz de la nota: dentro de un callout `> [!note]` o de un ítem de lista el plugin dibuja, pero no guarda posiciones ni permite editar.
+- Salida principal: un bloque ```` ```dbml ```` listo para pegar. El mismo texto sirve en las tres herramientas; cambia solo dónde va:
+  - **Obsidian**: a nivel raíz de una nota `.md`. Dentro de un callout `> [!note]` o de un ítem de lista el plugin dibuja, pero no guarda posiciones ni permite editar. Un archivo `.dbml` suelto no se dibuja.
+  - **VS Code**: un archivo `<nombre>.dbml` con el contenido sin cercas (se abre con el icono de diagrama de la barra de título, el comando "DBML ERD: Open ER Diagram to the Side" o *Open With… → DBML ER Diagram*), o un bloque ```` ```dbml ```` en un `.md` (la cerca abre la línea, sangría permitida, no dentro de `> `; con el cursor en el bloque, el mismo comando). Cada bloque tiene su propio panel.
+  - **dbdiagram.io / `@dbml/cli`**: el archivo `.dbml` o el contenido del bloque.
+- Si el usuario no dice en qué herramienta está, entregar el bloque: vale para todas, y el archivo `.dbml` es el mismo contenido sin cercas. Si lo pide como archivo, o trabaja en un proyecto de VS Code (Claude Code dentro de un repo), escribir `<nombre>.dbml` en UTF-8 sin BOM y decir cómo abrir el diagrama. Si está en Obsidian, bloque en la nota.
 - Orden: tablas padre antes que hijas, en orden topológico; en ciclos, el orden del script. Después, los bloques `TableGroup`, si los hay. Al final, las líneas `Ref:`.
-- Si piden archivo: `<nombre>.dbml`, UTF-8 sin BOM, sin fences. Aclarar que Obsidian no dibuja archivos `.dbml` sueltos: el archivo sirve para dbdiagram.io o `@dbml/cli`; en Obsidian el contenido va dentro de un bloque en una nota `.md`.
 - Después del bloque, una línea breve con lo interpretado: degradaciones, FK pendientes, nombres cambiados, convenciones aplicadas, áreas creadas y su criterio.
 
 ---
@@ -271,5 +284,5 @@ colapsando áreas. Leerlo completo antes de editar.
 9. Nada de la lista "Nunca emitir" de §2.
 10. Cada degradación con información útil quedó en una Note y la respuesta la resume.
 11. Tablas padre antes que hijas.
-12. Incremental: líneas `// @` (incluida `// @group`) y `// height:` intactas, `headercolor` y `TableGroup` previos intactos, tablas existentes en su orden.
+12. Incremental: líneas `// @` (incluidas `// @group` y `// @table`) y `// height:` intactas, `headercolor` y `TableGroup` previos intactos, tablas existentes en su orden.
 13. Áreas: solo si el usuario las pidió o ya existían; nombres únicos; cada tabla en una sola área; solo tablas que existen; bloques `TableGroup` después de las tablas y antes de los `Ref:`.
