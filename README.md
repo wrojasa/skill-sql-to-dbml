@@ -1,3 +1,5 @@
+[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/wrojasa/badge.svg)](https://hub.xerj.org/contributors/wrojasa)
+
 # skill-sql-to-dbml
 
 Skill de Claude que convierte scripts **SQL `CREATE TABLE`** —ANSI, SQL Server,
